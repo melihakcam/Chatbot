@@ -1,0 +1,27 @@
+# Veri (buyuk dosyalar - repoya girmez, sadece data/sample/ girer)
+data/raw/
+data/index/
+data/logs/
+data/pdf_cache/
+*.npy
+*.pkl
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Ortam
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# Notebook ciktilari
+.ipynb_checkpoints/

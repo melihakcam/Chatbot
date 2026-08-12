@@ -1,0 +1,16 @@
+# --- Ortak ---
+requests>=2.31
+
+# --- A tarafi: crawler ---
+beautifulsoup4>=4.12
+lxml>=5.0
+pypdf>=4.0
+openpyxl>=3.1
+
+# --- B tarafi: bot / RAG ---
+numpy>=1.26
+sentence-transformers>=3.0
+rank-bm25>=0.2.2
+
+# Not: Model calistirma icin Ollama kullaniliyor (ayri kurulum, pip degil).
+# Colab'da model karsilastirmasi icin notebook kendi icinde transformers kurar.
