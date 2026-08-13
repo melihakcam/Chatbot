@@ -294,6 +294,26 @@ def anlamli_mi(parca: dict) -> bool:
     return len(metin.split()) >= ANLAMLI_MIN_KELIME
 
 
+# Görev tanımı belgeleri: bölümdeki her rol için doldurulmuş aynı form
+# (Bölüm Başkanı, Staj Komisyonu, Sekreterlik, Proje Komisyonu...).
+#
+# NEDEN AYRI İŞARETLENİYOR: Bu belgeler bir görevin SORUMLULUKLARINI anlatır,
+# o görevde KİMİN olduğunu değil. Ama "araştırma", "ders programı", "görev"
+# gibi kelimeleri bolca içerdikleri için kişi ve ders sorularında ilk sıralara
+# çıkıp gerçek cevabı bağlamın dışına itiyorlardı:
+#   "araştırma görevlileri kimler" -> 1. sıra görev tanımı PDF'i, kadro listesi yok
+#   "birinci dönem dersleri neler" -> ilk iki sıra görev tanımı PDF'i
+# Silinmiyorlar (birinin "bölüm başkanının görevleri neler" diye sorma hakkı var),
+# sadece etiketleniyorlar; sıralama kararını bot/retriever.py veriyor.
+GOREV_TANIMI_ISARETLERI = ("görev unvanı", "bağlı alt unvanlar", "vekalet eden",
+                           "üst birim adı", "görevin tanımı")
+
+
+def gorev_tanimi_mi(metin: str) -> bool:
+    dusuk = metin.casefold()
+    return sum(i in dusuk for i in GOREV_TANIMI_ISARETLERI) >= 2
+
+
 def altbilgiyi_temizle(parca: dict) -> dict:
     """Alt bilgi satırlarını parça metninden siler."""
     satirlar = [s for s in parca["text"].split("\n")
@@ -306,9 +326,16 @@ def chunk_pages(kayitlar: list[dict]) -> list[dict]:
     parcalar: list[dict] = []
     elenen = 0
     for kayit in kayitlar:
+        # İşaretleme KAYIT seviyesinde: form başlıkları ("Görev Unvanı:",
+        # "Bağlı Alt Unvanlar:") belgenin sadece ilk parçasında geçiyor.
+        # Parça bazında bakınca aynı belgenin ikinci yarısı işaretsiz kalıyor
+        # ve cezadan kaçıp sonuçlara sızıyordu.
+        gorev = gorev_tanimi_mi(kayit["text"])
         for parca in chunk_record(kayit):
             if anlamli_mi(parca):
-                parcalar.append(altbilgiyi_temizle(parca))
+                temiz = altbilgiyi_temizle(parca)
+                temiz["gorev_tanimi"] = gorev
+                parcalar.append(temiz)
             else:
                 elenen += 1
     if elenen:

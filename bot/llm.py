@@ -56,7 +56,7 @@ class OllamaBackend:
             )
         return True, "hazir"
 
-    def generate(self, prompt: str, sicaklik: float = 0.2, maks_token: int = 400,
+    def generate(self, prompt: str, sicaklik: float = 0.2, maks_token: int = 220,
                  sistem: str | None = None) -> str:
         """Modeli /api/chat ile çağırır.
 
@@ -78,8 +78,14 @@ class OllamaBackend:
                 # Düşük sıcaklık: bu bir destek botu, yaratıcılık istemiyoruz.
                 # Bağlamda olmayan bilgiyi uydurma eğilimi sıcaklıkla artıyor.
                 "temperature": sicaklik,
+                # CPU'da her üretilen token pahalı (~5 token/sn). Prompt zaten
+                # "en fazla 4 cümle" diyor; 400 token tavanı sadece model
+                # kuralı unutup uzattığında devreye giriyordu ve tek cevabı
+                # dakikalarca uzatabiliyordu.
                 "num_predict": maks_token,
                 "top_p": 0.9,
+                # Model listeyi tekrarlayıp durursa erken kes.
+                "repeat_penalty": 1.15,
             },
         }).encode("utf-8")
 

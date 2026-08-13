@@ -66,6 +66,26 @@ def konu_cikar(metin: str, bilinen_birimler: list[str]) -> str | None:
     return None
 
 
+# Sorgudan atılan takip kelimeleri.
+#
+# NEDEN: "peki" arama sorgusunda kalınca BM25'i sulandırıyor — indekste hiç
+# geçmeyen bir kelime, eşleşen kelimelerin ağırlığını düşürüyor. Ölçülen vaka:
+# "bölüm başkanı kim" kapsam içi geçerken "peki bölüm başkanı kim" kapsam dışı
+# sayılıp reddediliyordu. Kelime soruya anlam katmıyor, sadece bağlaç.
+_ATILAN_ONEKLER = re.compile(
+    r"^(peki\s+ya|peki|ya|bir\s+de|ayrıca|o\s+zaman|e\s+)\s+", re.IGNORECASE
+)
+
+
+def onekleri_at(soru: str) -> str:
+    """Baştaki takip bağlaçlarını siler: 'peki bölüm başkanı kim' -> 'bölüm başkanı kim'."""
+    onceki = None
+    while onceki != soru:
+        onceki = soru
+        soru = _ATILAN_ONEKLER.sub("", soru).strip()
+    return soru or onceki
+
+
 def yeniden_yaz(soru: str, gecmis: list[tuple[str, str]],
                 bilinen_birimler: list[str] | None = None) -> str:
     """Takip sorusuna önceki konuyu ekler. Gerekmiyorsa soruyu aynen döndürür.
@@ -73,21 +93,27 @@ def yeniden_yaz(soru: str, gecmis: list[tuple[str, str]],
     gecmis: [(kullanici_sorusu, bot_cevabi), ...] — en yeniler sonda.
     bilinen_birimler: indekste geçen birim adları (Chatbot dolduruyor).
     """
-    birimler = bilinen_birimler or []
-    if not gecmis or not birimler or not takip_sorusu_mu(soru):
+    if not takip_sorusu_mu(soru):
         return soru
 
+    # Takip bağlaçları her durumda atılır — geçmiş olmasa bile aramaya zarar veriyor.
+    sade = onekleri_at(soru)
+
+    birimler = bilinen_birimler or []
+    if not gecmis or not birimler:
+        return sade
+
     # Soru zaten bir birim adı içeriyorsa dokunma.
-    if konu_cikar(soru, birimler):
-        return soru
+    if konu_cikar(sade, birimler):
+        return sade
 
     # En yeniden geriye doğru ilk konuyu bul (soruda, yoksa cevapta).
     for onceki_soru, onceki_cevap in reversed(gecmis[-3:]):
         konu = konu_cikar(onceki_soru, birimler) or konu_cikar(onceki_cevap, birimler)
         if konu:
-            return f"{konu} {soru}"
+            return f"{konu} {sade}"
 
-    return soru
+    return sade
 
 
 if __name__ == "__main__":

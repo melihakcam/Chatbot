@@ -60,6 +60,14 @@ KAYNAK_BASINA_MAKS = 2
 # geçiyorsa o parçaya bonus veriliyor (alan ağırlıklı arama).
 BASLIK_BONUSU = 0.015
 
+# Görev tanımı belgeleri için sıralama cezası.
+# Silmek yerine geri çekiyoruz: "bölüm başkanının görevleri neler" gibi bir
+# soru gelirse bu belgeler DOĞRU cevap. Ceza sadece soru görev/sorumluluk
+# sormadığında uygulanıyor.
+GOREV_TANIMI_CEZASI = 0.55
+GOREV_KELIMELERI = {"gorev", "gorevi", "gorevleri", "sorumluluk", "sorumluluklari",
+                    "yetki", "yetkileri", "tanimi", "komisyon", "komisyonu"}
+
 # Sorgu eş anlamlı genişletmesi (sadece BM25 tarafı).
 #
 # NEDEN VAR: Kullanıcı "hoca" der, sitede "Akademik Personel" yazar. Bu kelime
@@ -178,6 +186,15 @@ class Retriever:
             rrf[int(idx)] = rrf.get(int(idx), 0.0) + 1.0 / (RRF_K + sira + 1)
         for sira, idx in enumerate(bm25_sira):
             rrf[int(idx)] = rrf.get(int(idx), 0.0) + 1.0 / (RRF_K + sira + 1)
+
+        # Görev tanımı belgeleri: soru görev/sorumluluk sormuyorsa geri çekilir.
+        # Bu belgeler bir rolün sorumluluklarını anlatıyor, o rolde kimin
+        # olduğunu değil (bkz. index/chunk.py, gorev_tanimi_mi).
+        gorev_sorusu = bool(GOREV_KELIMELERI & set(tokenize_tr(soru)))
+        if not gorev_sorusu:
+            for idx in list(rrf):
+                if self.chunks[idx].get("gorev_tanimi"):
+                    rrf[idx] *= GOREV_TANIMI_CEZASI
 
         # Baslik bonusu: ayirt edici bilgi govdede degil baslikta duruyor
         # (mufredat / haftalik cizelge / sinav takvimi ayrimi gibi).
