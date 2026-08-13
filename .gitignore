@@ -3,6 +3,10 @@ data/raw/
 data/index/
 data/logs/
 data/pdf_cache/
+# HuggingFace model agirliklari (~1 GB), D: surucusunde tutulur.
+# NOT: gitignore satir sonu yorumunu DESTEKLEMEZ - yorum ayri satirda olmali,
+# yoksa "data/models/  # ..." tumu desen sayilir ve hicbir sey eslesmez.
+data/models/
 *.npy
 *.pkl
 

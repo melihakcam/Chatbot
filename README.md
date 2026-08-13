@@ -1,31 +1,41 @@
 # KTÜN Destek Chatbotu
 
-Konya Teknik Üniversitesi **Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölümü** için,
-sadece bölümle ilgili sorulara cevap veren destek chatbotu. Bilgi kaynağı üniversitenin
-kendi sitesi (ktun.edu.tr); bilgi modele ezberletilmez, soru anında ilgili sayfalar bulunup
-modele okutulur (**RAG**).
+Konya Teknik Üniversitesi için, **sadece** üniversiteyle ilgili sorulara cevap veren destek
+chatbotu. Bilgi kaynağı üniversitenin kendi sitesi (ktun.edu.tr); bilgi modele
+ezberletilmez, soru anında ilgili sayfalar bulunup modele okutulur (**RAG**).
 
 Hedef soru tipleri: **kişi/iletişim** · **tarih/takvim** · **ders/program** · **duyuru/haber**
 
-## Kapsam: tek bölüm
+## Kapsam
 
-Bot tüm üniversiteye değil, tek bölüme cevap veriyor. Sebep pratik: 31 bölümün tamamı
-binlerce sayfa demek, ve arama havuzu büyüdükçe "hangi bölümün sınav takvimi" ayrımı
-zorlaşıp yanlış bölümün cevabı dönüyor. Tek bölümde 67 kayıt, hepsi aynı birime ait —
-`unit` alanına bakarak eleme yapmak gerekmiyor.
+**Bilgisayar ve Bilişim Bilimleri Fakültesi**'nin üç bölümü — Bilgisayar Mühendisliği,
+Yazılım Mühendisliği, Yapay Zeka ve Makine Öğrenmesi Mühendisliği — artı üniversite geneli
+duyuru, haber ve akademik takvim. 31 bölümün tamamı binlerce sayfa demek ve arama havuzu
+büyüdükçe "hangi bölümün sınav takvimi" ayrımı zorlaşıyor; üç bölüm bu ayrımı hâlâ anlamlı
+tutacak kadar çeşitli, `unit` alanı da onu ayırt etmeye yetiyor.
 
-Çekilen 67 kaydın dağılımı: **41 PDF** (öğretim planı, 4 dönem ders programı, 10 sınav
-takvimi, staj belgeleri, kalite/süreç dosyaları) · 11 sayfa · 9 personel (8 hoca + liste) ·
-4 tablo (AKTS ders listeleri) · 2 duyuru.
+Çekilen **486 kayıt**: 257 PDF (öğretim planları, ders/sınav programları, staj ve kalite
+belgeleri) · 73 duyuru · 69 personel · 48 sayfa · 24 tablo (AKTS ders listeleri) · 15 haber.
+
+| Birim | Kayıt |
+|---|---|
+| Yazılım Mühendisliği | 198 |
+| Bilgisayar Mühendisliği | 178 |
+| Yapay Zeka ve Makine Öğrenmesi Mühendisliği | 67 |
+| (üniversite geneli) | 43 |
 
 Hocaların akademik geçmişi ve verdiği dersler kişi sayfalarının AJAX sekmelerinden geliyor;
 bir hoca = bir kayıt (sekmeler ayrı kayıt olsaydı hepsi aynı URL'e düşerdi). Yayın listeleri
 (makale, kitap, bildiri) bilerek toplanmıyor — hedef soru tipleri kişi/ders odaklı.
 
-> Bölümün "Öğretim Planı", "Ders Programı", "Sınav Programları" sayfalarının **metni
+> Bölümlerin "Öğretim Planı", "Ders Programı", "Sınav Programları" sayfalarının **metni
 > neredeyse boştur** — sadece PDF linkleri taşırlar. Asıl içerik `/Dosyalar/**.pdf`
 > altında, yani `/tr/Birim/` dışında. Bu yüzden `--sadece-birim` PDF'leri elemez
-> (`crawler/run.py:ekle`); elerse bölümün ders ve sınav verisinin tamamı kaybolur.
+> (`crawler/run.py:ekle`); elerse ders ve sınav verisinin tamamı kaybolur.
+>
+> Simetrik olarak `--birimsiz`, duyuru/haber taranırken birim sayfalarına girmeyi
+> engeller: duyuru listeleri her birime link veriyor ve filtresiz gezinti kapsam dışı
+> bölümleri (Mimarlık, Teknik Bilimler MYO…) içeri sızdırıyor.
 
 ---
 
@@ -61,16 +71,121 @@ ollama pull gemma2:2b
 
 ---
 
-## Komutlar
+## Çalıştırma
+
+Veri çekmek (A tarafı — hedef fakültenin üç bölümü + üniversite geneli):
 
 ```bash
-python scripts/validate_jsonl.py data/raw/pages.jsonl         # şema doğrula
-python scripts/make_sample.py                                 # crawler çıktısı -> örnek veri
-python common/normalize.py                                    # Türkçe normalizasyon testleri
+python -m crawler.run --seed "https://www.ktun.edu.tr/tr/Birim/Hakkimizda/?brm=14Nor138UPTTvDv6Apnukw==" --unit "Yapay Zeka ve Makine Öğrenmesi Mühendisliği" --sadece-birim
 ```
 
-Veri güncellemek = crawler'ı tekrar çalıştırmak; `--sifirdan` verilmezse mevcut
-kayıtlarla birleştirir.
+```bash
+python -m crawler.run --seed "https://www.ktun.edu.tr/tr/Universite/TumDuyurular?page=1" --seed "https://www.ktun.edu.tr/tr/Universite/TumHaberler?page=1" --seed "https://www.ktun.edu.tr/tr/Universite/AkademikTakvim" --birimsiz --derinlik 1
+```
+
+Diğer iki bölüm için `--seed`/`--unit` değiştirilir; `--sifirdan` verilmezse mevcut
+kayıtlarla birleşir. Sonra şema doğrulama ve örnek veri:
+
+```bash
+python scripts/validate_jsonl.py data/raw/pages.jsonl
+```
+
+```bash
+python scripts/make_sample.py
+```
+
+Indeks ve bot (B tarafı):
+
+```bash
+python -m index.build_index
+```
+
+```bash
+python -m bot.cli
+```
+
+Örnek oturum:
+
+```
+Sen > Yazılım Mühendisliğinde hangi hocalar var
+Bot > Yazılım Mühendisliği Bölümü'nde Doç. Dr. Emine BAŞ, Doç. Dr. İsmail KOÇ
+      ve Dr. Öğr. Üyesi Burak YILMAZ gibi hocalar görev yapmaktadır.
+      Kaynak: ...
+
+Sen > peki bölümün telefonu ne
+Bot > Yazılım Mühendisliği Bölümünün telefon numarası 0 (332) 205 14 29'dur.
+```
+
+### Diğer komutlar
+
+```bash
+python -m bot.cli --no-llm "yazılım mühendisliği hocaları"
+```
+
+```bash
+python -m eval.retrieval_test
+```
+
+```bash
+python -m eval.answer_test
+```
+
+```bash
+python scripts/validate_jsonl.py data/sample/pages.sample.jsonl
+```
+
+CLI içinde: `/kaynak` (son cevabın kaynakları), `/temizle` (hafızayı sıfırla), `/cik`.
+
+---
+
+## Ölçüm sonuçları
+
+**Arama** (`eval/retrieval_test.py`, LLM olmadan, 20 soru + 8 kapsam dışı):
+
+| Ölçüt | 41 kayıt (M4) | 486 kayıt (güncel) | Hedef |
+|---|---|---|---|
+| Doğru sayfa ilk 4'te | 20/20 (%100) | **17/20 (%85)** | %80 |
+| Kişi / Tarih / Ders / Duyuru | %100 hepsi | %83 / %100 / %60 / %100 | %70 |
+| Kapsam dışı sızıntı | 0/8 | **5/8** | 0 |
+| Kapsam içi yanlış ret | 0/20 | **0/20** | 0 |
+
+### 🔴 Kapsam kapısı yeniden kalibre edilmeli
+
+Kapı, kapsam dışı soruların BM25 skorunun düşük kalmasına dayanıyor
+(`bot/retriever.py`, `BM25_ESIGI = 4.0`). Eşik 41 kayıtlık veriyle ölçülmüştü ve
+o ölçekte aralıklar ayrıktı: kapsam dışı 0.00–3.36, kapsam içi 4.59–18.18.
+
+486 kayıtta aynı ölçüm **çakışıyor**:
+
+| | BM25 |
+|---|---|
+| kapsam içi **min** | 5.76 ("kayıt yenileme tarihleri") |
+| kapsam dışı **max** | 8.06 ("makarna tarifi ver") |
+
+Yani hiçbir tek BM25 eşiği iki kümeyi ayıramaz — eşiği yükseltmek gerçek soruları
+reddetmeye başlar. Sebep BM25'in nadir terimlere yüksek IDF vermesi: korpus
+büyüdükçe alakasız sorular da bir belgeye çarpıyor ("hava durumu" → bir öğrenci
+proje listesi, "makarna" → yemek listesi duyurusu). Kapının ikinci bir sinyale
+ihtiyacı var (birim/terim eşleşmesi, sorgu sınıflandırma vb.).
+
+Denenen ve **işe yaramayan** bir yol: duyuru/haber liste sayfalarını indeksten
+çıkarmak. Sızıntıyı değiştirmedi (5/8) ve arama isabetini 14/20'ye düşürdü —
+bazı testler zaten liste sayfasına eşleşerek geçiyordu.
+
+**Cevap** (`eval/answer_test.py`, 8 soru):
+
+| Model | Doğruluk | Hız |
+|---|---|---|
+| **gemma2:2b** (varsayılan) | **7/8 (%88)** | ~20 sn/soru |
+| qwen2.5:1.5b-instruct | 4/8 (%50) | ~4 sn/soru |
+
+qwen hızlı ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1.
+parçasında apaçık dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
+
+### Bilinen kusur
+"Güz yarıyılı ne zaman başlıyor" sorusunda model bazen Bahar tarihini veriyor.
+Akademik takvim PDF'inde GÜZ ve BAHAR blokları ayrı parçalarda ve etiketli, ama
+embedding "güz" sorgusunda BAHAR parçasını üste çıkarabiliyor.
 
 ---
 
@@ -86,10 +201,11 @@ sadece [`SCHEMA.md`](SCHEMA.md)'deki `pages.jsonl` formatına bağlıdır.
 | Ortak | `common/`, `SCHEMA.md`, `requirements.txt` | — | küçük, nadir değişir |
 
 Bağımsızlığı sağlayan iki şey:
-- **`data/sample/pages.sample.jsonl`** (67 gerçek sayfa, repoda) → `data/raw/` gitignore'da,
+- **`data/sample/pages.sample.jsonl`** (200 gerçek sayfa, repoda) → `data/raw/` gitignore'da,
   yani repoyu klonlayan biri crawler'ı çalıştırmadan elinde veri bulamaz. Örnek dosya
   crawler çıktısından üretilir (`scripts/make_sample.py`); gerçek veriye geçmek tek şey
-  değiştirir: `--input` yolu, kod değişmez.
+  değiştirir: `--input` yolu, kod değişmez. Sınır 200, çünkü 120'de eval testlerinin
+  beklediği üç sayfa (telefon, "Yemek Listesi", öğretim görevlisi ilanı) örnekten düşüyordu.
 - **`--backend dummy`** → B, model kurulumunu beklemeden arama zincirini test eder.
 
 Branch düzeni: `feat/crawler` (A) ve `feat/bot` (B), günlük PR.

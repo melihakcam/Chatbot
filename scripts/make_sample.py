@@ -23,6 +23,13 @@ SEÇİM:
     hiç test edemez. Tip içinde metin uzunluğuna göre eşit aralıklı seçim
     yapılır, böylece hem 300 karakterlik iletişim sayfası hem 21.000
     karakterlik staj yönergesi örneğe girer.
+
+DİKKAT:
+    Seçim değişince B tarafının eval testleri etkilenebilir — o testler örnek
+    dosyada belirli sayfaların bulunmasına dayanıyor (telefon numarası, YAZ102,
+    "Yemek Listesi" duyurusu gibi). Varsayılan sınır 200, çünkü 120'de üç
+    beklenti düşüyordu. Bu dosyayı yeniden ürettikten sonra:
+        python -m eval.retrieval_test
 """
 
 import argparse
@@ -98,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="crawler ciktisindan ornek veri seti")
     ap.add_argument("--input", default=str(GIRDI))
     ap.add_argument("--out", default=str(CIKTI))
-    ap.add_argument("--max-kayit", type=int, default=120)
+    ap.add_argument("--max-kayit", type=int, default=200)
     a = ap.parse_args(argv)
 
     girdi = Path(a.input)
