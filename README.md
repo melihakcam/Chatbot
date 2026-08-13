@@ -195,6 +195,42 @@ Tek bölüm verisiyle (67 kayıt → 104 parça) ölçüldü.
 ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1. parçasında apaçık
 dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
 
+### Colab T4'te model karşılaştırması
+
+Lokalde NVIDIA GPU yok, 2B üstü model denenemiyordu. Tavanı görmek için aynı 8
+soru Colab'ın T4'ünde 4-bit nicelemeyle ölçüldü
+([`notebooks/model_karsilastirma.ipynb`](notebooks/model_karsilastirma.ipynb)).
+Arama zinciri ve promptlar birebir aynı; değişen tek şey `bot/llm.py` yerine
+`generate()` sözleşmesini sağlayan bir Colab backend'i.
+
+| Model | Doğruluk | Kapsam dışı reddi | sn/soru |
+|---|---|---|---|
+| Qwen2.5-1.5B-Instruct | 6/8 (%75) | 2/2 | 10.1 |
+| **Qwen2.5-7B-Instruct** | **8/8 (%100)** | 2/2 | 12.7 |
+
+**Ne çıkarıyoruz:** boyut bu görevde işe yarıyor ve ucuza geliyor — 7B, 1.5B'nin
+dört katı parametreyle soru başına yalnızca 2.6 saniye daha alıyor (GPU'da
+darboğaz üretim değil, model yükleme ve bellek). 7B'nin 8/8'i, sistemin
+kalan hatasının aramada değil modelde olduğunu da gösteriyor: aynı bağlamla
+lokal 2B 7/8 yapıyordu, 7B aynı bağlamdan 8/8 çıkarıyor.
+
+**Bu tablonun söylemedikleri:**
+- `google/gemma-2-*` ölçülemedi (HF'de kapalı repo, lisans onayı + token
+  istiyor). Yani lokal varsayılanın GPU'daki karşılığı tabloda **yok**;
+  7B ile gemma2:2b arasındaki fark doğrudan değil, lokal ölçümle dolaylı
+  kıyaslanıyor.
+- Qwen2.5-1.5B burada 6/8 yaptı; lokalde (Ollama, `q4_K_M`) bundan belirgin
+  kötüydü. Aynı model ailesi, farklı niceleme ve farklı sohbet şablonu —
+  hangisinin etkili olduğu ölçülmedi, dolayısıyla "1.5B aslında iyiymiş"
+  demek için erken.
+- 8 soruluk kümede tek soru %12.5 ediyor; bu tablo sıralama verir, ince fark
+  vermez.
+
+**Karar:** lokal varsayılan `gemma2:2b` olarak kalıyor — 7B bu makinede zaten
+çalışmıyor, karşılaştırma bir seçim değil tavan ölçümü. Değeri şurada: GPU'lu
+bir ortama taşınırsa doğruluk %88'den %100'e çıkıyor ve süre 12-62 sn'den
+~13 sn'ye iniyor. Kod tarafında hiçbir değişiklik gerekmiyor.
+
 ### Bilinen kusurlar
 - "Birinci dönem dersleri neler" sorusunda görev tanımı PDF'i 1. sırada; doğru
   belge (öğretim planı) 3. sırada, cevap bağlama giriyor ama sıralama ideal değil.
