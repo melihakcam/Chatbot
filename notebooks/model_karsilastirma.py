@@ -33,11 +33,14 @@ KURULUM = r"""
 
 import os, sys, glob, zipfile
 
+# Colab'in sol paneli KLASOR degil DOSYA kabul ediyor. Klasor suruklendiginde
+# cogu zaman sessizce hicbir sey olmuyor — /content bos kaliyor. Bu yuzden
+# burada dosya secme penceresi aciliyor: guvenilir ve tek tiklik.
 ATLA = {"sample_data", "__pycache__", ".git", ".config", ".ipynb_checkpoints"}
 
 
 # bot/ index/ common/ klasorlerini BIRLIKTE iceren dizini bulur.
-def proje_kokunu_bul(basla="/content", derinlik=4):
+def proje_kokunu_bul(basla="/content", derinlik=5):
     for kok, klasorler, _ in os.walk(basla):
         klasorler[:] = [d for d in klasorler if d not in ATLA]
         if kok.count(os.sep) - basla.count(os.sep) > derinlik:
@@ -48,31 +51,46 @@ def proje_kokunu_bul(basla="/content", derinlik=4):
     return None
 
 
-KOK = proje_kokunu_bul()
-
-# Klasor yerine zip atilmissa: ac, tekrar ara.
-if KOK is None:
+def zipleri_ac():
+    acildi = False
     for z_yol in glob.glob("/content/**/*.zip", recursive=True):
         with zipfile.ZipFile(z_yol) as z:
             z.extractall("/content/ktun")
-        print(f"Zip acildi: {z_yol}")
+        print(f"Zip acildi: {os.path.basename(z_yol)}")
+        acildi = True
+    return acildi
+
+
+KOK = proje_kokunu_bul()
+
+if KOK is None and zipleri_ac():
+    KOK = proje_kokunu_bul()
+
+# Hala yoksa dosya secme penceresi ac (surukle-birak'a guvenme).
+if KOK is None:
+    print("Proje bulunamadi.\n")
+    print("Bilgisayarinda ktunChatbot klasorunu ZIP'le (sag tik -> Sikistir),")
+    print("asagidaki 'Dosya Sec' ile o zip'i yukle.\n")
+    from google.colab import files
+    yuklenen = files.upload()
+    for ad in yuklenen:
+        if ad.lower().endswith(".zip"):
+            with zipfile.ZipFile(ad) as z:
+                z.extractall("/content/ktun")
+            print(f"Acildi: {ad}")
     KOK = proje_kokunu_bul()
 
 if KOK is None:
-    print("Proje bulunamadi. /content icinde su anda sunlar var:")
+    print("/content icinde su anda sunlar var:")
     for ad in sorted(os.listdir("/content")):
         print("   ", ad)
-    raise SystemExit(
-        "\nSoldaki klasor simgesine tiklayip ktunChatbot klasorunu surukle,\n"
-        "sonra bu hucreyi tekrar calistir.\n"
-        "Gereken klasorler: bot/ index/ common/ eval/ data/sample/"
-    )
+    raise SystemExit("Proje klasoru bulunamadi. Zip'in icinde bot/ index/ common/ olmali.")
 
 os.chdir(KOK)
 sys.path.insert(0, KOK)        # 'bot', 'index', 'common' import edilebilsin
 os.environ["KTUN_KOK"] = KOK   # sonraki hucreler bunu kullaniyor
 
-print("Proje koku:", KOK)
+print("\nProje koku:", KOK)
 print("Klasorler:", sorted(d for d in os.listdir() if os.path.isdir(d) and not d.startswith(".")))
 ornek = os.path.join(KOK, "data", "sample", "pages.sample.jsonl")
 print("Ornek veri:", "VAR" if os.path.exists(ornek) else "YOK — indeks kurulamaz")

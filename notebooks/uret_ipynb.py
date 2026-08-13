@@ -56,9 +56,13 @@ def main() -> int:
         markdown_hucre(BASLIK),
         markdown_hucre(
             "## 1. Kurulum\n\n"
-            "**Soldaki klasör simgesine tıkla, `ktunChatbot` klasörünü sürükle.**\n"
-            "Sonra bu hücreyi çalıştır.\n\n"
-            "Hücre klasörü nereye düştüyse kendisi bulur; yolu senin ayarlaman gerekmiyor."
+            "Bu hücreyi **doğrudan çalıştır**. Proje bulunamazsa bir *Dosya Seç* "
+            "penceresi açılacak — `ktunChatbot` klasörünün zip'ini seç.\n\n"
+            "> Zip gerekiyor çünkü Colab'ın sol paneli **klasör değil dosya** kabul ediyor; "
+            "klasör sürüklendiğinde çoğu zaman sessizce hiçbir şey olmuyor ve `/content` "
+            "boş kalıyor.\n\n"
+            "Zip'lerken `data/models` klasörünü **dahil etme** — 941 MB embedding modeli "
+            "var, Colab kendisi indiriyor. Gereken: `bot/ index/ common/ eval/ data/sample/`"
         ),
         kod_hucre(KURULUM),
         markdown_hucre("## 2. İndeks\n"
