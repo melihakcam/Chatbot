@@ -112,6 +112,12 @@ python -m index.build_index --input data/raw/pages.jsonl
 python -m bot.cli
 ```
 
+Tarayıcıda kullanmak istersen (aynı bot, `http://127.0.0.1:8000`):
+
+```bash
+python -m bot.web
+```
+
 Crawler çalıştırmadan denemek için indeks örnek veriden de kurulabilir
 (`--input` verilmezse `data/sample/pages.sample.jsonl` kullanılır).
 
