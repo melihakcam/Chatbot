@@ -14,14 +14,23 @@ Hücreleri değiştirmek istersen model_karsilastirma.py'yi düzenle, sonra bunu
 tekrar çalıştır. .ipynb'yi elle düzenleme, üzerine yazılır.
 """
 
+import base64
+import gzip
+import io
 import json
 import sys
+import tarfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from model_karsilastirma import BACKEND, INDEKS, KARSILASTIRMA, KURULUM, TABLO
 
+PROJE = Path(__file__).resolve().parent.parent
 CIKTI = Path(__file__).resolve().parent / "model_karsilastirma.ipynb"
+
+# Colab'da gereken her sey. data/models (470 MB HF onbellegi) ve data/index
+# BILEREK yok: birincisini Colab kendi indiriyor, ikincisini 2. hucre kuruyor.
+PAKETE_GIREN = ["bot", "index", "common", "eval", "data/sample", "requirements.txt"]
 
 BASLIK = """# KTÜN Chatbot — Model Karşılaştırması
 
@@ -30,22 +39,54 @@ Lokalde NVIDIA GPU yok; `gemma2:2b` CPU'da soru başına 12-62 saniye alıyor ve
 
 **Amaç:** lokale hangi modelin kurulacağına karar vermek ve rapora tablo çıkarmak.
 
-## Çalıştırmadan önce iki ayar
+Kod bu notebook'un içinde gömülü geliyor — **başka dosya yüklemene gerek yok.**
 
-1. **Runtime → Change runtime type → T4 GPU**
-2. Sol paneldeki 🔑 **Secrets** → şu ikisini ekle, "Notebook access" aç:
+## Çalıştırmadan önce
 
-| Secret | Nereden | Gerekli mi |
-|---|---|---|
-| `GH_TOKEN` | GitHub → Settings → Developer settings → Personal access tokens → Fine-grained, sadece `Chatbot` reposu + `Contents: Read` | Evet — repo private |
-| `HF_TOKEN` | huggingface.co → Settings → Access Tokens (ayrıca `google/gemma-2-2b-it` ve `-9b-it` sayfalarında lisansı kabul et) | Hayır — yoksa gemma modelleri atlanır, Qwen'ler ölçülür |
-
-`GH_TOKEN` secret'ı yoksa hücre gizli bir giriş kutusu açar; token notebook'a
-yazılmaz, dolayısıyla repoya da sızmaz.
+1. **Runtime → Change runtime type → T4 GPU** (zorunlu)
+2. `google/gemma-*` modellerini de ölçmek istiyorsan: huggingface.co →
+   Settings → Access Tokens'tan bir token al, `gemma-2-2b-it` ve `gemma-2-9b-it`
+   sayfalarında lisansı kabul et, sonra Colab'ın sol panelindeki 🔑 **Secrets**
+   bölümüne `HF_TOKEN` adıyla ekle ve "Notebook access"i aç.
+   *Bunu atlarsan hiçbir şey kırılmaz — gemma'lar atlanır, Qwen modelleri ölçülür.*
 
 Sonra hücreleri sırayla çalıştır. Son hücre Markdown tablo basar, doğrudan
 README'ye yapıştırılabilir.
 """
+
+
+def _temizle(bilgi: tarfile.TarInfo):
+    """__pycache__/.pyc atar; mtime'i sabitler.
+
+    mtime sabitlenmezse aynı kod her üretimde farklı base64 veriyor ve
+    notebook'un git diff'i sebepsiz yere değişiyor.
+    """
+    ad = bilgi.name
+    if "__pycache__" in ad or ad.endswith((".pyc", ".pyo")):
+        return None
+    bilgi.mtime, bilgi.uid, bilgi.gid = 0, 0, 0
+    bilgi.uname = bilgi.gname = ""
+    return bilgi
+
+
+def payload_uret() -> str:
+    """Projenin gereken kısmını tar.gz + base64 olarak döndürür."""
+    tampon = io.BytesIO()
+    # Once duz tar, sonra gzip.compress(mtime=0). "w:gz" kullanilsaydi gzip
+    # basligina o anki saat yazilir ve payload her uretimde degisirdi.
+    with tarfile.open(fileobj=tampon, mode="w", format=tarfile.GNU_FORMAT) as tar:
+        for yol in PAKETE_GIREN:
+            hedef = PROJE / yol
+            if not hedef.exists():
+                raise SystemExit(f"Pakete girecek yol yok: {yol}")
+            tar.add(hedef, arcname=yol, filter=_temizle)
+    return base64.b64encode(gzip.compress(tampon.getvalue(), mtime=0)).decode("ascii")
+
+
+def satirla(b64: str, genislik: int = 96) -> str:
+    """Tek satırlık base64'ü notebook JSON'unda okunur parçalara böler."""
+    parcalar = [b64[i:i + genislik] for i in range(0, len(b64), genislik)]
+    return '"\n    "'.join(parcalar)
 
 
 def markdown_hucre(metin: str) -> dict:
@@ -63,20 +104,25 @@ def kod_hucre(metin: str) -> dict:
 
 
 def main() -> int:
+    b64 = payload_uret()
+    kurulum = KURULUM.replace("__PAYLOAD__", satirla(b64))
+
     hucreler = [
         markdown_hucre(BASLIK),
         markdown_hucre(
             "## 1. Kurulum\n\n"
-            "Hiçbir şey yüklemen gerekmiyor — bu hücre repoyu kendisi klonluyor "
-            "(`--depth 1`, 1 MB'ın altında) ve bağımlılıkları kuruyor.\n\n"
+            "**Hiçbir dosya yüklemene gerek yok.** Projenin Colab'da gereken kısmı "
+            "(`bot/ index/ common/ eval/ data/sample/`) sıkıştırılıp bu hücrenin "
+            "içine gömülü; hücre onu `/content/ktun`'a açıyor ve bağımlılıkları "
+            "kuruyor. Ne zip, ne GitHub, ne token.\n\n"
             "> Klasörü zip'leyip yüklemek işe yaramıyordu: klasörün tamamı ~760 MB "
             "(`data/models` 470 MB embedding önbelleği + `.git` 290 MB), Colab'ın "
-            "ihtiyacı olan kısım ise 0.5 MB. Ayrıca Colab'ın sol paneli klasör değil "
-            "**dosya** kabul ediyor. Klonlama ikisini birden çözüyor ve kod "
-            "değiştiğinde yeniden yüklemek gerekmiyor.\n\n"
-            "Hücre ikinci kez çalıştırılırsa klonlamak yerine `git pull` yapar."
+            "ihtiyacı olan kısım ise 0.5 MB — üstelik Colab'ın sol paneli klasör "
+            "değil **dosya** kabul ediyor.\n\n"
+            "⚠️ Gömülü kod üretildiği andaki hâlidir. Projede değişiklik yaptıysan "
+            "`python notebooks/uret_ipynb.py` ile notebook'u yenile."
         ),
-        kod_hucre(KURULUM),
+        kod_hucre(kurulum),
         markdown_hucre("## 2. İndeks\n"
                        "`data/raw/` gitignore'da; Colab repodaki örnek veriyle çalışır."),
         kod_hucre(INDEKS),

@@ -18,32 +18,56 @@ KULLANIM (Colab):
 
 # ---------------------------------------------------------------- HÜCRE 1: kurulum
 #
-# NEDEN ZIP DEĞİL KLONLAMA:
-#     Önce "klasörü zip'leyip Colab'a yükle" deniyordu. Çalışmadı: klasörün
-#     tamamı ~760 MB (data/models 470 MB HF önbelleği + .git 290 MB), işe
-#     yarayan kısım 0.5 MB. Yükleme ya kopuyor ya da içeri eski __pycache__
-#     giriyor. `git clone --depth 1` ise 1 MB'ın altında ve her çalıştırmada
-#     güncel — kod değişince yeniden zip'lemek gerekmiyor.
+# KOD NOTEBOOK'UN İÇİNDE TAŞINIYOR:
+#     İki yol denendi, ikisi de tökezledi. (1) Klasörü zip'leyip yüklemek:
+#     klasörün tamamı ~760 MB (data/models 470 MB HF önbelleği + .git 290 MB),
+#     işe yarayan kısım 0.5 MB — yükleme kopuyor, üstelik Colab'ın sol paneli
+#     klasör değil dosya kabul ediyor. (2) git clone: repo private, token
+#     gerekiyor; projeyi GitHub'a bağımlı hale getiriyor.
 #
-# TOKEN NEREDE DURUYOR:
-#     Repo private. Token notebook'a YAZILMIYOR (repoya sızar); Colab'ın
-#     Secrets panelinden okunuyor. Secret yoksa gizli giriş kutusu açılıyor,
-#     yani hücre yine de çalışıyor — sadece her oturumda soruyor.
-#     google/gemma-* HF'de KAPALI repo; onun için ayrıca HF_TOKEN gerekiyor,
-#     yoksa 4. hücre o modelleri atlıyor (çökmüyor).
+#     Üçüncü yol: gereken dosyalar (bot/ index/ common/ eval/ data/sample/)
+#     tar.gz'lenip base64 olarak BU HÜCRENİN İÇİNE gömülüyor. Sıkıştırılmış
+#     hâli birkaç yüz KB. Colab'a yüklenecek tek dosya notebook'un kendisi;
+#     ne zip, ne token, ne internet.
+#
+#     BEDELİ: kod değişince notebook bayatlıyor. `python notebooks/uret_ipynb.py`
+#     tekrar çalıştırılmalı — gömülü içerik her üretimde yeniden alınıyor.
+#
+# __PAYLOAD__ yer tutucusunu uret_ipynb.py dolduruyor; burada bilerek boş.
 KURULUM = r"""
 !pip -q install sentence-transformers rank-bm25 transformers accelerate bitsandbytes
 
-import getpass
+import base64
+import io
 import os
-import subprocess
 import sys
+import tarfile
 
-REPO = "github.com/melihakcam/Chatbot.git"
 KOK = "/content/ktun"
 
+# bot/ index/ common/ eval/ data/sample/ — tar.gz + base64.
+# Parantez sart: satirlar bitisik string literal olarak birlesiyor.
+PAYLOAD = (
+    "__PAYLOAD__"
+)
 
-# Colab Secrets'tan okur; panel yoksa veya izin verilmemisse None doner.
+paket = tarfile.open(fileobj=io.BytesIO(base64.b64decode(PAYLOAD)), mode="r:gz")
+try:
+    # Python 3.12+ filtresiz extractall icin uyari basiyor; eski surumler
+    # 'filter' argumanini tanimiyor. Ikisinde de calissin.
+    paket.extractall(KOK, filter="data")
+except TypeError:
+    paket.extractall(KOK)
+paket.close()
+
+os.chdir(KOK)
+if KOK not in sys.path:
+    sys.path.insert(0, KOK)    # 'bot', 'index', 'common' import edilebilsin
+os.environ["KTUN_KOK"] = KOK   # sonraki hucreler bunu kullaniyor
+
+
+# google/gemma-* HF'de KAPALI repo, token ister. Colab Secrets'ta HF_TOKEN
+# varsa aliniyor; yoksa 4. hucre o modelleri atlayip Qwen'lerle devam ediyor.
 def gizli(ad):
     try:
         from google.colab import userdata
@@ -52,36 +76,13 @@ def gizli(ad):
         return None
 
 
-if os.path.isdir(os.path.join(KOK, "bot")):
-    subprocess.run(["git", "-C", KOK, "pull", "--quiet"], check=False)
-    print("Repo zaten vardi, guncellendi.")
-else:
-    gh = gizli("GH_TOKEN")
-    if not gh:
-        print("Colab Secrets'ta GH_TOKEN yok (sol paneldeki anahtar simgesi).")
-        gh = getpass.getpass("GitHub token: ").strip()
-
-    sonuc = subprocess.run(
-        ["git", "clone", "--depth", "1", f"https://{gh}@{REPO}", KOK],
-        capture_output=True, text=True,
-    )
-    if sonuc.returncode:
-        # Token hata metninde gecebiliyor; loglara dusmesin diye maskeleniyor.
-        raise SystemExit("Klonlama basarisiz:\n" + sonuc.stderr.replace(gh, "***"))
-    print("Repo klonlandi.")
-
-os.chdir(KOK)
-if KOK not in sys.path:
-    sys.path.insert(0, KOK)    # 'bot', 'index', 'common' import edilebilsin
-os.environ["KTUN_KOK"] = KOK   # sonraki hucreler bunu kullaniyor
-
-# gemma-2 HF'de kapali: token yoksa 4. hucre o modelleri atlar.
 hf = gizli("HF_TOKEN")
 if hf:
     os.environ["HF_TOKEN"] = hf
 
 ornek = "data/sample/pages.sample.jsonl"
 print("Kok         :", KOK)
+print("Klasorler   :", sorted(d for d in os.listdir() if os.path.isdir(d)))
 print("Ornek veri  :", "VAR" if os.path.exists(ornek) else "YOK — indeks kurulamaz")
 print("HF_TOKEN    :", "var" if hf else "YOK — google/gemma-* atlanacak")
 """
