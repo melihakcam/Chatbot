@@ -127,6 +127,22 @@ KOSINUS_ESIGI = 0.82
 # (kapsam dışı kosinüs tavanı 0.843). Bu yol olmadan geçerli soru reddediliyordu.
 KOSINUS_TEK_BASINA_ESIGI = 0.85
 
+# ÜÇÜNCÜ YOL — yukarıdakinin simetriği: kelime eşleşmesi ezici ama kosinüs zayıf.
+#
+# Ölçülen vaka: "beyza kızıldağ kimdir" -> BM25 18.53, kosinüs 0.798. Doğru
+# kişi (Arş. Gör. Beyza KIZILDAĞ) sonuçların 1. sırasında ama kapı reddediyordu:
+# "kimdir" gibi genel bir soru kelimesi kosinüsü eşiğin altına çekiyor, oysa
+# özel adın kelime eşleşmesi tartışmasız. Kullanıcı bunu "okulla ilgili soru
+# sordum, cevap vermiyor" diye bildirdi.
+#
+# 820 parçalık indekste ölçüm:
+#     kapsam içi   BM25  5.35 - 24.03
+#     kapsam dışı  BM25  0.00 -  8.42   (tavan: "hava durumu nasıl")
+# Eşik 12.0: kapsam dışı tavanının %43 üstünde. Kosinüs tarafındaki 0.001'lik
+# paydan farklı olarak burada gerçek bir boşluk var — özel adlar nadir terim
+# olduğu için BM25'te yüksek IDF alıyor, alakasız sorular bu seviyeye çıkmıyor.
+BM25_TEK_BASINA_ESIGI = 12.0
+
 
 @dataclass
 class Sonuc:
@@ -274,7 +290,8 @@ class Retriever:
         bm25 = getattr(self, "_son_bm25_max", 0.0)
         kosinus = getattr(self, "_son_kosinus_max", 0.0)
         yeterli = ((bm25 >= BM25_ESIGI and kosinus >= KOSINUS_ESIGI)
-                   or kosinus >= KOSINUS_TEK_BASINA_ESIGI)
+                   or kosinus >= KOSINUS_TEK_BASINA_ESIGI
+                   or bm25 >= BM25_TEK_BASINA_ESIGI)
         return not yeterli
 
 

@@ -108,6 +108,43 @@ def ders_satiri_cikar(metin: str, ders_kodu: str) -> tuple[str, str, str] | None
     return None
 
 
+# Kadro listelerindeki unvanlar. Sıra ÖNEMLİ: "Dr. Öğr. Üyesi" önce denenmeli,
+# yoksa "Dr." ile eşleşip yanlış unvan döner.
+UNVANLAR = ("Prof. Dr.", "Doç. Dr.", "Dr. Öğr. Üyesi", "Öğr. Gör. Dr.",
+            "Öğr. Gör.", "Arş. Gör. Dr.", "Arş. Gör.", "Uzm.", "Okutman")
+
+
+def kisi_satiri_cikar(metin: str, ad_parcalari: list[str]) -> str | None:
+    """Kadro listesinden bir kişinin TAM satırını (unvan + ad) döndürür.
+
+    NEDEN VAR: 2B model unvanı uyduruyordu. "beyza kızıldağ kimdir" sorusunda
+    kaynak sayfada "Arş. Gör. Beyza KIZILDAĞ" yazarken model "öğretim üyesi
+    olarak çalışmaktadır" dedi — akademik unvanlar birbirinin yerine geçmez,
+    bu düpedüz yanlış bilgi. Unvan metinde bir ALAN gibi duruyor; telefon ve
+    ders kodunda olduğu gibi doğrudan okunuyor, modele yazdırılmıyor.
+    """
+    for satir in re.split(r"[|\n]", metin):
+        satir = satir.strip()
+        if not satir or len(satir) > 80:
+            continue
+        satir_norm = normalize_tr(satir)
+        if not all(normalize_tr(p) in satir_norm for p in ad_parcalari):
+            continue
+        for unvan in UNVANLAR:
+            if satir.startswith(unvan):
+                return satir
+    return None
+
+
+def _ad_parcalari(soru: str) -> list[str]:
+    """Sorudan ad adayı kelimeleri ayıklar (soru kelimeleri atılır)."""
+    atilacak = {"kim", "kimdir", "kimler", "nedir", "ne", "hangi", "bolum",
+                "bolumu", "hoca", "hocasi", "unvani", "unvan", "gorevi",
+                "calisiyor", "veriyor", "dersleri", "ders", "mi", "midir"}
+    return [k for k in re.findall(r"\w+", soru)
+            if len(k) > 2 and normalize_tr(k) not in atilacak]
+
+
 def dogrudan_cevap(soru: str, sonuclar) -> tuple[str, object] | None:
     """Soru yapısal olarak cevaplanabiliyorsa (cevap, kaynak) döndürür.
 
@@ -115,6 +152,16 @@ def dogrudan_cevap(soru: str, sonuclar) -> tuple[str, object] | None:
     """
     if not sonuclar:
         return None
+
+    # --- Kişi sorusu: "X kimdir", "X kim" ---
+    if re.search(r"\b(kimdir|kim)\b", soru, re.IGNORECASE):
+        parcalar = _ad_parcalari(soru)
+        if len(parcalar) >= 2:                       # ad + soyad
+            for s in sonuclar:
+                satir = kisi_satiri_cikar(s.text, parcalar)
+                if satir:
+                    birim = s.unit or "KTÜN"
+                    return f"{satir} — {birim} akademik kadrosunda.", s
 
     # --- Ders kodu sorusu: "YAZ102 kaç kredi", "BBF101 dersinin adı ne" ---
     kod_eslesme = _DERS_KODU.search(soru)
