@@ -40,13 +40,75 @@ ollama pull gemma2:2b
 
 ---
 
-## Komutlar
+## Çalıştırma
 
 ```bash
-python scripts/make_sample.py                                 # örnek veri üret (M0, tek seferlik)
-python scripts/validate_jsonl.py data/sample/pages.sample.jsonl   # şema doğrula
-python common/normalize.py                                    # Türkçe normalizasyon testleri
+python -m index.build_index
 ```
+
+```bash
+python -m bot.cli
+```
+
+Örnek oturum:
+
+```
+Sen > Yazılım Mühendisliğinde hangi hocalar var
+Bot > Yazılım Mühendisliği Bölümü'nde Doç. Dr. Emine BAŞ, Doç. Dr. İsmail KOÇ
+      ve Dr. Öğr. Üyesi Burak YILMAZ gibi hocalar görev yapmaktadır.
+      Kaynak: ...
+
+Sen > peki bölümün telefonu ne
+Bot > Yazılım Mühendisliği Bölümünün telefon numarası 0 (332) 205 14 29'dur.
+```
+
+### Diğer komutlar
+
+```bash
+python -m bot.cli --no-llm "yazılım mühendisliği hocaları"
+```
+
+```bash
+python -m eval.retrieval_test
+```
+
+```bash
+python -m eval.answer_test
+```
+
+```bash
+python scripts/validate_jsonl.py data/sample/pages.sample.jsonl
+```
+
+CLI içinde: `/kaynak` (son cevabın kaynakları), `/temizle` (hafızayı sıfırla), `/cik`.
+
+---
+
+## Ölçüm sonuçları
+
+**Arama** (`eval/retrieval_test.py`, LLM olmadan, 20 soru + 8 kapsam dışı):
+
+| Ölçüt | Sonuç | Hedef |
+|---|---|---|
+| Doğru sayfa ilk 4'te | **20/20 (%100)** | %80 |
+| Kişi / Tarih / Ders / Duyuru | %100 / %100 / %100 / %100 | %70 |
+| Kapsam dışı sızıntı | **0/8** | 0 |
+| Kapsam içi yanlış ret | **0/20** | 0 |
+
+**Cevap** (`eval/answer_test.py`, 8 soru):
+
+| Model | Doğruluk | Hız |
+|---|---|---|
+| **gemma2:2b** (varsayılan) | **7/8 (%88)** | ~20 sn/soru |
+| qwen2.5:1.5b-instruct | 4/8 (%50) | ~4 sn/soru |
+
+qwen hızlı ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1.
+parçasında apaçık dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
+
+### Bilinen kusur
+"Güz yarıyılı ne zaman başlıyor" sorusunda model bazen Bahar tarihini veriyor.
+Akademik takvim PDF'inde GÜZ ve BAHAR blokları ayrı parçalarda ve etiketli, ama
+embedding "güz" sorgusunda BAHAR parçasını üste çıkarabiliyor.
 
 ---
 

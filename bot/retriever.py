@@ -36,6 +36,16 @@ from common.normalize import tokenize_tr  # noqa: E402
 RRF_K = 60          # RRF sabiti; literatürdeki standart değer
 ADAY_SAYISI = 30    # her yöntemden kaç aday alınacak (birleştirmeden önce)
 
+# Aynı kaynak sayfadan en fazla kaç parça sonuca girebilir.
+#
+# NEDEN VAR: Bir bölümün personel sayfası ~20 parçaya bölünüyor ve her parçanın
+# metninde "Yazılım Mühendisliği — Akademik Personel" yazıyor. Bölüm adı geçen
+# HER soruda bu 20 parça birden ~0.88 kosinüs alıp ilk 4'ü dolduruyordu:
+# "birinci dönem dersleri" sorusunda ders listesi hiç görünmüyor, model de
+# bağlamda ders olmadığı için ders adı UYDURUYORDU.
+# Kota, farklı kaynaklara yer açarak bunu kesiyor.
+KAYNAK_BASINA_MAKS = 2
+
 # --- KAPSAM EŞİKLERİ (ölçümle belirlendi) ---
 #
 # İlk denemede kapsam kapısı sadece kosinüse bakıyordu ve ÇALIŞMADI:
@@ -116,7 +126,18 @@ class Retriever:
         for sira, idx in enumerate(bm25_sira):
             rrf[int(idx)] = rrf.get(int(idx), 0.0) + 1.0 / (RRF_K + sira + 1)
 
-        en_iyiler = sorted(rrf.items(), key=lambda x: -x[1])[:k]
+        # Kaynak cesitliligi: ayni sayfadan gelen parcalar sonuclari doldurmasin.
+        siralanmis = sorted(rrf.items(), key=lambda x: -x[1])
+        en_iyiler: list[tuple[int, float]] = []
+        kaynak_sayaci: dict[str, int] = {}
+        for idx, rrf_skor in siralanmis:
+            kaynak = self.chunks[idx]["url"]
+            if kaynak_sayaci.get(kaynak, 0) >= KAYNAK_BASINA_MAKS:
+                continue
+            kaynak_sayaci[kaynak] = kaynak_sayaci.get(kaynak, 0) + 1
+            en_iyiler.append((idx, rrf_skor))
+            if len(en_iyiler) == k:
+                break
 
         sonuclar = []
         for idx, rrf_skor in en_iyiler:

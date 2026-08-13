@@ -264,10 +264,49 @@ def chunk_record(kaynak: dict) -> list[dict]:
     return _kayan_pencere(kaynak)  # "sayfa" ve tanımsız tipler
 
 
+# Bilgi taşımayan sayfaların metni. Bunlar indekse girerse arama sonucunda
+# gerçek içeriğin yerini çalıyor: "Bölüm Dersleri" sayfası sadece
+# "Program Seçiniz" yazıyor (asıl liste AJAX ucunda) ama "hangi dersler var"
+# sorusunda 1. sıraya çıkıp gerçek ders listesini 4'lük bağlamdan dışarı itiyordu.
+ICERIKSIZ_ISARETLER = ("program seçiniz", "seçiniz", "tıklayınız")
+ANLAMLI_MIN_KELIME = 8
+
+# Personel parçaları kısa olmak ZORUNDA — bir hoca kaydı "Doç. Dr. Emine BAŞ"
+# yani 4 kelime. Uzunluk filtresi bunları silmemeli.
+UZUNLUK_MUAF_TIPLER = {"personel"}
+
+
+def anlamli_mi(parca: dict) -> bool:
+    """Parça gerçek bilgi taşıyor mu? Başlık tekrarı ve menü kalıntısı sayılmaz."""
+    satirlar = [s.strip() for s in parca["text"].split("\n") if s.strip()]
+
+    # Başlıkla aynı olan satırları çıkar — geriye kalan asıl içeriktir.
+    baslik_parcalari = {parca["title"].casefold()}
+    if parca["unit"]:
+        baslik_parcalari.add(parca["unit"].casefold())
+    govde = [s for s in satirlar if s.casefold() not in baslik_parcalari]
+
+    metin = " ".join(govde).strip()
+    if not metin:
+        return False
+    if metin.casefold() in ICERIKSIZ_ISARETLER:
+        return False
+    if parca["doc_type"] in UZUNLUK_MUAF_TIPLER:
+        return True
+    return len(metin.split()) >= ANLAMLI_MIN_KELIME
+
+
 def chunk_pages(kayitlar: list[dict]) -> list[dict]:
     parcalar: list[dict] = []
+    elenen = 0
     for kayit in kayitlar:
-        parcalar.extend(chunk_record(kayit))
+        for parca in chunk_record(kayit):
+            if anlamli_mi(parca):
+                parcalar.append(parca)
+            else:
+                elenen += 1
+    if elenen:
+        print(f"  ({elenen} iceriksiz parca elendi)")
     return parcalar
 
 
