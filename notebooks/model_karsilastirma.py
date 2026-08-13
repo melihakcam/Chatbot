@@ -17,15 +17,53 @@ KULLANIM (Colab):
 """
 
 # ---------------------------------------------------------------- HÜCRE 1: kurulum
+#
+# DİKKAT: Repo PRIVATE. Kimlik doğrulaması olmadan git clone başarısız olur,
+# /content/ktun oluşmaz, sonraki hücrelerde "No module named 'bot'" hatası alınır.
+# Bu yüzden klonlama denenip SONUCU KONTROL EDİLİYOR ve başarısızsa ne yapılacağı
+# yazdırılıyor — sessizce devam edip kafa karıştıran hataya yol açmıyor.
 KURULUM = r"""
 !pip -q install sentence-transformers rank-bm25 transformers accelerate bitsandbytes
-!git clone https://github.com/melihakcam/Chatbot.git /content/ktun
-%cd /content/ktun
+
+import os, sys, subprocess
+KOK = "/content/ktun"
+
+# Yol A: private repo icin token. Colab'da sol taraftaki anahtar simgesinden
+# "GITHUB_TOKEN" adiyla secret ekleyip erisimi acarsan burasi otomatik calisir.
+token = None
+try:
+    from google.colab import userdata
+    token = userdata.get("GITHUB_TOKEN")
+except Exception:
+    pass
+
+if not os.path.isdir(KOK):
+    url = (f"https://{token}@github.com/melihakcam/Chatbot.git" if token
+           else "https://github.com/melihakcam/Chatbot.git")
+    sonuc = subprocess.run(["git", "clone", url, KOK], capture_output=True, text=True)
+    if sonuc.returncode != 0:
+        print("KLONLAMA BASARISIZ (repo private).\n")
+        print("Yol A — token ile:")
+        print("  1. github.com/settings/tokens -> Generate new token (classic), 'repo' yetkisi")
+        print("  2. Colab solda anahtar simgesi -> Yeni secret: ad GITHUB_TOKEN, deger token")
+        print("  3. 'Not defteri erisimi' anahtarini ac, bu hucreyi tekrar calistir\n")
+        print("Yol B — elle yukleme (token istemiyorsan):")
+        print("  1. Bilgisayarinda D:\\ktunChatbot klasorunu zip'le")
+        print("  2. Colab solda dosya simgesi -> zip'i /content'e surukle")
+        print("  3. Asagidaki satiri calistir:")
+        print("     !unzip -q /content/ktunChatbot.zip -d /content/ktun\n")
+        raise SystemExit("Once repoyu Colab'a getir, sonra devam et.")
+
+os.chdir(KOK)
+sys.path.insert(0, KOK)        # 'bot', 'index', 'common' import edilebilsin
+print("Hazir:", os.getcwd())
+print("Klasorler:", sorted(d for d in os.listdir() if os.path.isdir(d) and not d.startswith(".")))
 """
 
 # ---------------------------------------------------------------- HÜCRE 2: indeks
 # data/raw gitignore'da, repoda data/sample var — Colab bununla çalışır.
 INDEKS = r"""
+%cd /content/ktun
 !python -m index.build_index --input data/sample/pages.sample.jsonl
 """
 
@@ -80,7 +118,16 @@ class ColabBackend:
 
 # ---------------------------------------------------------------- HÜCRE 4: karşılaştırma
 KARSILASTIRMA = r'''
-import time, gc, torch
+import os, sys, time, gc, torch
+
+# Guvenlik agi: hucreler sirasiz calistirilirsa veya oturum yeniden baglanirsa
+# calisma dizini /content'e doner ve "No module named 'bot'" hatasi alinir.
+KOK = "/content/ktun"
+if os.getcwd() != KOK:
+    os.chdir(KOK)
+if KOK not in sys.path:
+    sys.path.insert(0, KOK)
+
 from bot.answer import Chatbot
 from eval.answer_test import SORULAR, KAPSAM_DISI
 
