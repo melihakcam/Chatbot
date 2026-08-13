@@ -65,6 +65,7 @@ ollama pull gemma2:2b
 
 ```bash
 python scripts/validate_jsonl.py data/raw/pages.jsonl         # şema doğrula
+python scripts/make_sample.py                                 # crawler çıktısı -> örnek veri
 python common/normalize.py                                    # Türkçe normalizasyon testleri
 ```
 
@@ -85,8 +86,10 @@ sadece [`SCHEMA.md`](SCHEMA.md)'deki `pages.jsonl` formatına bağlıdır.
 | Ortak | `common/`, `SCHEMA.md`, `requirements.txt` | — | küçük, nadir değişir |
 
 Bağımsızlığı sağlayan iki şey:
-- **`data/sample/pages.sample.jsonl`** (40 gerçek sayfa, repoda) → B, crawler hiç
-  yazılmamışken çalışır. Gerçek veri gelince tek değişen `--input` yolu olur, kod değişmez.
+- **`data/sample/pages.sample.jsonl`** (67 gerçek sayfa, repoda) → `data/raw/` gitignore'da,
+  yani repoyu klonlayan biri crawler'ı çalıştırmadan elinde veri bulamaz. Örnek dosya
+  crawler çıktısından üretilir (`scripts/make_sample.py`); gerçek veriye geçmek tek şey
+  değiştirir: `--input` yolu, kod değişmez.
 - **`--backend dummy`** → B, model kurulumunu beklemeden arama zincirini test eder.
 
 Branch düzeni: `feat/crawler` (A) ve `feat/bot` (B), günlük PR.
