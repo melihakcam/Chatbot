@@ -37,6 +37,24 @@ _FOLD_MAP = str.maketrans({
 _WS_RE = re.compile(r"\s+")
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
+# BM25'ten elenen kelimeler. Normalize edilmiş (ASCII katlanmış) halleriyle yazılı.
+#
+# NEDEN: Bunlar neredeyse her soruda ve her sayfada geçtiği için BM25 skorunu
+# şişirir. Kapsam dışı "futbol maçı ne zaman" sorusu sırf "ne/zaman" yüzünden
+# kapsam içi görünüyordu. Soru kalıbı kelimeleri elenince geriye sadece konu
+# kelimeleri kalır ve kapsam kapısı doğru çalışır.
+DURAK_KELIMELER = frozenset("""
+ne nedir nasil nerede neresi nereden neye niye nicin kim kimdir kimler hangi
+kac kacta kacinci mi mu mi midir var yok vardir mevcut
+ve veya ile ama fakat ancak icin gibi kadar sonra once simdi
+bu su o bir birkac her hepsi tum butun diger baska
+ben sen biz siz onlar benim senin bizim sizin onun
+olan olarak olur oldu olmak yapmak etmek almak vermek
+da de ki dan den ta te tan ten
+zaman tarih tarihi tarihleri
+universite universitesi universitede universiteye
+""".split())
+
 
 def lower_tr(text: str) -> str:
     """Türkçe'ye doğru küçük harfe çevirir. İ->i, I->ı."""
@@ -58,9 +76,15 @@ def normalize_tr(text: str) -> str:
     return _WS_RE.sub(" ", fold_tr(lower_tr(text))).strip()
 
 
-def tokenize_tr(text: str) -> list[str]:
-    """BM25 için kelime listesi üretir."""
-    return _TOKEN_RE.findall(normalize_tr(text))
+def tokenize_tr(text: str, durak_ele: bool = True) -> list[str]:
+    """BM25 için kelime listesi üretir.
+
+    Durak kelimeler elenir — indeksleme ve sorgu AYNI ayarı kullanmak zorunda.
+    """
+    kelimeler = _TOKEN_RE.findall(normalize_tr(text))
+    if not durak_ele:
+        return kelimeler
+    return [k for k in kelimeler if k not in DURAK_KELIMELER and len(k) > 1]
 
 
 if __name__ == "__main__":

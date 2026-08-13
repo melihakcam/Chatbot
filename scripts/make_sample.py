@@ -48,12 +48,8 @@ SESSION.headers.update({
     "User-Agent": "KTUN-Support-Bot/0.1 (KTUN ogrenci destek chatbotu; egitim projesi)"
 })
 
-# Örnekte yer alacak bölümler (farklı fakültelerden, çeşitlilik için)
-HEDEF_BOLUMLER = [
-    "Yazılım Mühendisliği",
-    "Elektrik-Elektronik Mühendisliği",
-    "Bilgisayar Mühendisliği",
-]
+# Projenin hedef fakültesi. Bu fakültenin TÜM bölümleri örneğe girer.
+HEDEF_FAKULTE = "Bilgisayar ve Bilişim Bilimleri Fakültesi"
 
 # Bölümün yan menüsünden alınacak alt sayfalar (menüdeki görünen adlarıyla)
 HEDEF_ALT_SAYFALAR = [
@@ -397,22 +393,19 @@ def main() -> int:
     birimler = birimleri_kesfet()
     print(f"\nMega-menude {len(birimler)} birim linki bulundu")
 
-    # Bölümler ana menüde değil, fakültelerin altında. Önce fakülteleri gez.
-    tum_bolumler: dict[str, str] = {}
-    for fakulte_adi, fakulte_url in birimler.items():
-        if not fakulte_adi.endswith(("Fakültesi", "Yüksekokulu")):
-            continue
-        bulunan = bolumleri_kesfet(fakulte_url)
-        print(f"  {fakulte_adi[:45]:47} -> {len(bulunan)} bolum")
-        tum_bolumler.update(bulunan)
-    print(f"Toplam {len(tum_bolumler)} bolum kesfedildi")
+    # Bölümler ana menüde değil, fakültenin altında (2 kademe derinde).
+    fakulte_url = next((u for ad, u in birimler.items() if ad.startswith(HEDEF_FAKULTE)), None)
+    if fakulte_url is None:
+        print(f"HATA: '{HEDEF_FAKULTE}' menude bulunamadi")
+        return 1
 
-    for bolum in HEDEF_BOLUMLER:
-        eslesen = next((ad for ad in tum_bolumler if ad.startswith(bolum)), None)
-        if eslesen is None:
-            print(f"\n[BOLUM] {bolum} — BULUNAMADI, atlandi")
-            continue
-        kayitlar += bolum_sayfalari(bolum, tum_bolumler[eslesen])
+    bolumler = bolumleri_kesfet(fakulte_url)
+    print(f"{HEDEF_FAKULTE}: {len(bolumler)} bolum")
+    for ad in bolumler:
+        print(f"  - {ad}")
+
+    for bolum_adi, bolum_url in bolumler.items():
+        kayitlar += bolum_sayfalari(bolum_adi, bolum_url)
 
     kayitlar += liste_sayfalari("/tr/Universite/TumDuyurular", "/DuyuruDetay/", "duyuru", 8)
     kayitlar += liste_sayfalari("/tr/Universite/TumHaberler", "/HaberDetay/", "haber", 4)
