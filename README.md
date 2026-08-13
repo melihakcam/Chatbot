@@ -51,7 +51,7 @@ flowchart TD
         CRAWL["crawler/run.py<br/>BFS + PDF + AJAX"]
         RAW[("data/raw/pages.jsonl<br/>486 kayıt")]
         CHUNK["index/chunk.py<br/>tipe göre parçalama"]
-        IDX[("data/index/<br/>366 parça · embedding · BM25")]
+        IDX[("data/index/<br/>348 parça · embedding · BM25")]
         SITE --> CRAWL --> RAW --> CHUNK --> IDX
     end
 
@@ -210,7 +210,7 @@ seviye.
 
 ## Ölçüm sonuçları
 
-Güncel veriyle (**486 kayıt → 366 parça**) ölçüldü. Karşılaştırma sütunu, kapsam
+Güncel veriyle (**486 kayıt → 348 parça**) ölçüldü. Karşılaştırma sütunu, kapsam
 tek bölümken (67 kayıt → 104 parça) alınan ölçüm — ikisi de aynı soru kümesiyle
 (`eval/retrieval_test.py`, 18 kapsam içi / 6 kapsam dışı).
 
@@ -218,13 +218,28 @@ tek bölümken (67 kayıt → 104 parça) alınan ölçüm — ikisi de aynı so
 
 | Ölçüt | 67 kayıt (tek bölüm) | 486 kayıt (güncel) | Hedef |
 |---|---|---|---|
-| Doğru kaynak ilk 4'te | 17/18 (%94) | **15/18 (%83)** | %80 |
-| kişi / tarih / ders / duyuru | %100 / %100 / %83 / %100 | %80 / %100 / %83 / %75 | %70 |
+| Doğru kaynak ilk 4'te | 17/18 (%94) | **16/18 (%89)** | %80 |
+| kişi / tarih / ders / duyuru | %100 / %100 / %83 / %100 | %100 / %100 / %83 / %75 | %70 |
 | Kapsam dışı sızıntı | 0/6 | **2/6** | 0 |
 | Kapsam içi yanlış ret | 0/18 | **0/18** | 0 |
 
-Arama isabeti hedefin üstünde kalıyor — korpus 4.7 katına çıkarken %94'ten %83'e
-inmesi beklenen bir bedel. Asıl gerileme kapsam kapısında.
+Arama isabeti hedefin üstünde. Kapsam 4.7 katına çıkarken ilk ölçüm 14/18'e
+düşmüştü; aşağıdaki üç düzeltmeyle 16/18'e çıktı ve kişi soruları %100 oldu.
+Açık kalan tek gerileme kapsam kapısı.
+
+### Ölçekle ortaya çıkan üç sessiz hata
+
+Hiçbiri 67 kayıtta görünmüyordu, hiçbiri hata mesajı vermiyor:
+
+| # | Belirti | Kök sebep | Çözüm |
+|---|---|---|---|
+| 10 | Kişi sorularında ilk 4 sonuç görev tanımı formu, isim yok | Bazı PDF'ler her karakteri ayrı konumlandırıyor; pypdf `"G ö r e v  U n v a n ı :"` çıkarıyor. İmza bulunamayınca belge işaretlenmiyor, ceza uygulanmıyor — ayrıca BM25 her harfi ayrı token sayıyor | `index/chunk.py:bosluklari_onar` |
+| 11 | Ceza yiyen belge yine 1. sırada | Ceza RRF'e çarpılıyor, **sonra** başlık bonusu ekleniyordu; bonus (0.010) cezayı telafi ediyordu — RRF'in tek katkısı ≈0.016 | Ceza bonustan sonraya alındı |
+| 12 | "araştırma görevlileri kimler" haber sayfalarını getiriyor | Veride 17 Arş. Gör. kaydı var; site "Arş. Gör." yazıyor, kullanıcı "araştırma görevlisi" diyor | Eş anlamlı listesine eklendi |
+
+#10 üçünün en öğreticisi: **tek bir metin çıkarma kusuru üç katmanı birden
+bozuyor** — belge sınıflandırma, kelime araması ve anlamsal arama. Hiçbiri
+çökmüyor, sadece yanlış belge üste çıkıyor.
 
 ### 🔴 Kapsam kapısı yeniden kalibre edilmeli
 
@@ -258,35 +273,25 @@ testler zaten liste sayfasına eşleşerek geçiyordu.
 
 | Ölçüt | 67 kayıt (tek bölüm) | 486 kayıt (güncel) |
 |---|---|---|
-| Cevap doğruluğu | 8/8 (%100) | **5/8 (%62)** |
+| Cevap doğruluğu | 8/8 (%100) | **7/8 (%88)** |
 | Kapsam dışı reddi | 2/2 | **1/2** |
 | Yönlendirme | 1/1 | 1/1 |
-| Sohbet hafızası | çalışıyor | **tutmadı** |
-| Süre | ort. 57.5 sn/soru | ort. 58.3 sn/soru (CPU, gemma2:2b) |
+| Sohbet hafızası | çalışıyor | çalışıyor |
+| Süre | ort. 57.5 sn/soru | ort. 49.3 sn/soru (CPU, gemma2:2b) |
 
-### 🔴 Soru kümesi yeni kapsama göre yazılmalı
+**Soru kümesi yeni kapsama göre yeniden yazıldı.** Küme tek bölüm varken
+yazılmıştı; kapsam üç bölüme çıkınca sorular tek doğru cevabı olmayan sorulara
+dönüştü ve ölçüm, sistem doğru çalışırken HATA saymaya başladı: *"bölüm başkanı
+kim"* sorusuna Bilgisayar Mühendisliği'nin başkanı geliyor, test YZM'ninkini
+bekliyordu. Sorular artık birim adı taşıyor — birimsiz soruda ölçülen şey
+doğruluk değil şanstı. Bu düzeltmeden önce ölçüm 5/8 gösteriyordu.
 
-Düşüşün büyük kısmı sistemin gerilemesi değil, **soruların artık belirsiz
-olması.** Küme tek bölüm varken yazıldı; kapsam üç bölüme çıkınca aynı sorular
-tek doğru cevabı olmayan sorulara dönüştü:
+Kalan tek cevap hatası "araştırma görevlileri kimler": arama artık doğru personel
+sayfalarını getiriyor (16/18 ölçümünde bu soru geçiyor) ama 2B model listeden
+Arş. Gör. unvanlılarını ayıklamak yerine ilk gördüğü isimleri sayıyor.
 
-| Soru | Beklenen | Ne oldu |
-|---|---|---|
-| "Bölüm başkanı kim" | `Hakan` | *Hangi* bölümün? Üç bölümün üç başkanı var |
-| "Bölümün amacı nedir" | `yapay zeka` | Arama Bilgisayar Mühendisliği'ne düştü — o da geçerli bir cevap |
-| "Araştırma görevlileri kimler" | `Arş` | Model Dr. Öğr. Üyesi listeledi; kadro sayfası üç bölüme yayıldı |
-
-Yani üç hatanın en az ikisi **testin kusuru**. Sorular birim adıyla nitelenmeli
-("Yazılım Mühendisliği bölüm başkanı kim"), beklenen ifadeler yeni veriye göre
-güncellenmeli. Gerçek gerilemenin boyutu ancak ondan sonra ölçülebilir.
-
-Testten bağımsız iki gerçek sorun var:
-- **Kapsam dışı sızıntı** ("makarna tarifi ver" modele gitti) — yukarıdaki
-  kapsam kapısı bulgusunun cevap tarafındaki karşılığı.
-- **Sohbet hafızası tutmadı** — takip sorusu ("peki bölüm başkanı kim") doğru
-  yeniden yazıldı ama model bağlamdan ismi çıkaramadı, "**[3]** bölümdeki Bölüm
-  Başkanının göreviyle belirtilmiştir" dedi. Bağlama üç bölümün görev tanımı
-  PDF'i birden girince 2B model hangisinin sorulduğunu ayırt edemiyor.
+**Kapsam dışı sızıntı** ("makarna tarifi ver" modele gitti) yukarıdaki kapsam
+kapısı bulgusunun cevap tarafındaki karşılığı — açık kusur.
 
 **Model seçimi:** `gemma2:2b` varsayılan. `qwen2.5:1.5b-instruct` beş kat hızlı
 ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1. parçasında apaçık
@@ -340,11 +345,12 @@ yani dört kat daha büyük modelle dört kattan fazla hız. Kod tarafında hiç
 değişiklik gerekmiyor; değişen tek şey `bot/llm.py`'nin arkasındaki backend.
 
 ### Bilinen kusurlar
-- **Kapsam kapısı 486 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık.
-- **Soru kümesi yeni kapsama göre güncellenmedi** — sorular birim adı taşımıyor,
-  bu yüzden cevap doğruluğu ölçümü olduğundan kötü görünüyor.
-- **Takip sorusunda bağlam ayrımı** — üç bölümün belgesi bağlama birden girince
-  2B model hangisinin sorulduğunu ayırt edemiyor (sohbet hafızası testi tutmadı).
+- **Kapsam kapısı 486 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık. Ölçekle
+  gelen ve hâlâ açık olan tek ciddi gerileme.
+- **Birimsiz soru belirsiz** — "bölüm başkanı kim" üç bölümden birini seçiyor.
+  Sistem bunu kullanıcıya sormuyor, sessizce birini alıyor.
+- 2B model unvana göre süzemiyor: "araştırma görevlileri kimler" sorusunda doğru
+  kadro sayfası bağlamda, ama model Arş. Gör. olanları ayıklamıyor.
 - "Güz yarıyılı ne zaman başlıyor" sorusunda model bazen Bahar tarihini veriyor.
   Akademik takvim PDF'inde GÜZ ve BAHAR blokları ayrı parçalarda ve etiketli, ama
   embedding "güz" sorgusunda BAHAR parçasını üste çıkarabiliyor.
