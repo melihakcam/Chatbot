@@ -3,12 +3,11 @@
 retrieval_test.py aramayı ölçer (model yok). Bu test modelin bulunan bağlamdan
 DOĞRU cevap üretip üretmediğini ölçer.
 
-Otomatik kontrol: cevapta beklenen ifade geçiyor mu + kapsam kuralları tuttu mu.
-Cevap akıcılığı gözle değerlendirilir (çıktı yazdırılır).
+KAPSAM: Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölümü.
 
 ÇALIŞTIRMA:
     python -m eval.answer_test
-    python -m eval.answer_test --model gemma2:2b
+    python -m eval.answer_test --model qwen2.5:1.5b-instruct
 """
 
 import argparse
@@ -22,23 +21,24 @@ from bot.answer import Chatbot
 
 # (soru, cevapta gecmesi beklenen ifade, tip)
 SORULAR = [
-    ("Yazılım Mühendisliğinde hangi hocalar var", "BAŞ", "kisi"),
-    ("Yazılım Mühendisliği bölümünün telefonu nedir", "205", "kisi"),
-    ("Bilgisayar Mühendisliği e-posta adresi nedir", "ktun.edu.tr", "kisi"),
-    ("Güz yarıyılı dersleri ne zaman başlıyor", "Eylül", "tarih"),
-    ("Yazılım Mühendisliği birinci dönemde hangi dersler var", "Matematik", "ders"),
-    ("YAZ102 dersinin adı nedir", "Algoritma", "ders"),
-    ("Yatay geçiş başvuruları hakkında bilgi ver", "geçiş", "duyuru"),
-    ("Yemek listesi duyurusu var mı", "Yemek", "duyuru"),
+    ("Bölümde hangi hocalar var", "YILMAZ", "kisi"),
+    ("Bölüm başkanı kim", "Hakan", "kisi"),
+    ("Araştırma görevlileri kimler", "Arş", "kisi"),
+    ("Bölümün amacı nedir", "yapay zeka", "genel"),
+    ("Staj yapmak için ne gerekiyor", "staj", "duyuru"),
+    ("DC şartlı geçer ne demek", "DC", "duyuru"),
+    ("Birinci dönemde hangi dersler var", "Matematik", "ders"),
+    ("Bölümde kaç dönem ders var", "dönem", "ders"),
 ]
 
 KAPSAM_DISI = ["makarna tarifi ver", "bitcoin fiyatı kaç"]
 
 YONLENDIRME = [("notlarımı nereden görürüm", "obs.ktun.edu.tr")]
 
+# Takip sorusu: ikinci soruda bölüm adı GEÇMİYOR, geçmişten taşınmalı.
 HAFIZA_TESTI = [
-    ("Yazılım Mühendisliğinde hangi hocalar var", None),
-    ("peki bölümün telefonu ne", "205"),
+    ("Bölümde hangi hocalar var", None),
+    ("peki bölüm başkanı kim", "Hakan"),
 ]
 
 
@@ -54,6 +54,7 @@ def main() -> int:
 
     isabet = 0
     toplam_sure = 0.0
+    dogrudan_sayisi = 0
 
     print("=" * 74)
     print("1) CEVAP DOGRULUGU")
@@ -64,11 +65,13 @@ def main() -> int:
         cevap = bot.sor(soru)
         sure = time.time() - basla
         toplam_sure += sure
+        dogrudan_sayisi += cevap.dogrudan
 
         ok = beklenen.casefold() in cevap.metin.casefold()
         isabet += ok
-        print(f"\n{'OK  ' if ok else 'HATA'} [{tip:6}] {soru}   ({sure:.1f} sn)")
-        print(f"  {cevap.metin[:260]}")
+        etiket = "dogrudan" if cevap.dogrudan else "model"
+        print(f"\n{'OK  ' if ok else 'HATA'} [{tip:6}] {soru}   ({sure:.1f} sn, {etiket})")
+        print(f"  {cevap.metin[:240]}")
         if not ok:
             print(f"  !! beklenen ifade yok: {beklenen!r}")
 
@@ -79,9 +82,8 @@ def main() -> int:
     for soru in KAPSAM_DISI:
         bot.gecmisi_temizle()
         cevap = bot.sor(soru)
-        ok = cevap.kapsam_disi
-        kapsam_ok += ok
-        print(f"  {'OK  ' if ok else 'SIZDI'} {soru:32} -> {cevap.metin[:52]}")
+        kapsam_ok += cevap.kapsam_disi
+        print(f"  {'OK  ' if cevap.kapsam_disi else 'SIZDI'} {soru:32} -> {cevap.metin[:48]}")
 
     yon_ok = 0
     for soru, beklenen in YONLENDIRME:
@@ -89,7 +91,7 @@ def main() -> int:
         cevap = bot.sor(soru)
         ok = cevap.yonlendirme and beklenen in cevap.metin
         yon_ok += ok
-        print(f"  {'OK  ' if ok else 'HATA'} {soru:32} -> {cevap.metin[:52]}")
+        print(f"  {'OK  ' if ok else 'HATA'} {soru:32} -> {cevap.metin[:48]}")
 
     print("\n" + "=" * 74)
     print("3) SOHBET HAFIZASI  (takip sorusu)")
@@ -100,8 +102,8 @@ def main() -> int:
         cevap = bot.sor(soru)
         print(f"\n  Sen > {soru}")
         if cevap.kullanilan_soru != soru:
-            print(f"  (yeniden yazildi: {cevap.kullanilan_soru})")
-        print(f"  Bot > {cevap.metin[:200]}")
+            print(f"  (arama sorusu: {cevap.kullanilan_soru})")
+        print(f"  Bot > {cevap.metin[:180]}")
         if beklenen:
             hafiza_ok = beklenen.casefold() in cevap.metin.casefold()
 
@@ -110,6 +112,7 @@ def main() -> int:
     print(f"Kapsam disi ret : {kapsam_ok}/{len(KAPSAM_DISI)}")
     print(f"Yonlendirme     : {yon_ok}/{len(YONLENDIRME)}")
     print(f"Hafiza          : {'OK' if hafiza_ok else 'TUTMADI'}")
+    print(f"Modelsiz cevap  : {dogrudan_sayisi}/{len(SORULAR)} (yapisal cikarim)")
     print(f"Ortalama sure   : {toplam_sure / len(SORULAR):.1f} sn/soru")
 
     basarili = isabet >= len(SORULAR) * 0.75 and kapsam_ok == len(KAPSAM_DISI)

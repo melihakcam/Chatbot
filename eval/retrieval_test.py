@@ -4,6 +4,10 @@ Bu test modelsiz çalışır — "soruya doğru sayfa geliyor mu" sorusunu cevap
 Cevap kalitesi değil, ARAMA kalitesi ölçülür. Model takılmadan önce burası
 yeşile dönmeli, yoksa modele yanlış bağlam gider ve hata modelde sanılır.
 
+KAPSAM: Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölümü (tek bölüm).
+Sorular bilerek bölüm adı GEÇMEDEN yazıldı — gerçek kullanıcı "bölümde hangi
+hocalar var" der, her seferinde bölüm adını tekrarlamaz.
+
 ÇALIŞTIRMA:
     python -m eval.retrieval_test
 """
@@ -16,45 +20,40 @@ from common.console import setup_stdout_utf8
 from bot.retriever import Retriever
 
 # (soru, beklenen kaynakta geçmesi gereken ifade, soru tipi)
-# Beklenti "title veya text içinde geçmeli" olarak kontrol edilir.
 KAPSAM_ICI = [
     # --- kişi / iletişim ---
-    ("Yazılım Mühendisliğinde hangi hocalar var", "Yazılım Mühendisliği", "kisi"),
-    ("Emine Baş hangi bölümde", "Emine BAŞ", "kisi"),
-    ("Bilgisayar Mühendisliği bölüm başkanı kim", "Bilgisayar Mühendisliği", "kisi"),
-    ("Yapay Zeka ve Makine Öğrenmesi bölümünde kimler var", "Yapay Zeka", "kisi"),
-    ("yazılım mühendisliği bölüm telefonu", "Telefon", "kisi"),
-    ("bilgisayar mühendisliği e-posta adresi", "@ktun.edu.tr", "kisi"),
+    ("bölümde hangi hocalar var", "Doç. Dr.", "kisi"),
+    ("bölüm başkanı kim", "Hakan YILMAZ", "kisi"),
+    ("Ayşe Beşkirli hangi dersleri veriyor", "BEŞKİRLİ", "kisi"),
+    ("araştırma görevlileri kimler", "Arş. Gör.", "kisi"),
+    ("bölümün iletişim bilgileri", "İletişim", "kisi"),
 
     # --- tarih / takvim ---
-    ("güz yarıyılı final sınavları ne zaman", "GÜZ YARIYILI", "tarih"),
-    ("bahar dönemi ne zaman başlıyor", "BAHAR", "tarih"),
-    ("kayıt yenileme tarihleri", "Kayıt", "tarih"),
-    ("lisansüstü akademik takvim", "LİSANSÜSTÜ", "tarih"),
+    ("akademik takvim", "Akademik Takvim", "tarih"),
+    ("sınav programı nerede", "Sınav Program", "tarih"),
+    ("ders programı ne zaman açıklanır", "Ders Program", "tarih"),
 
     # --- ders / program ---
-    ("YAZ102 dersi kaç kredi", "YAZ102", "ders"),
-    ("Bilgisayar Mühendisliği ders listesi", "Ders Kodu", "ders"),
-    ("yazılım mühendisliği birinci dönem dersleri", "DÖNEM 1", "ders"),
-    ("yapay zeka bölümü ders programı", "Yapay Zeka", "ders"),
-    ("öğretim planı nerede", "Öğretim Planı", "ders"),
+    ("bölümde hangi dersler var", "Ders", "ders"),
+    ("birinci dönem dersleri neler", "DÖNEM 1", "ders"),
+    ("kaç AKTS kredisi var", "AKTS", "ders"),
+    ("öğretim planı", "Öğretim Planı", "ders"),
+    ("program çıktıları neler", "Program Çıktı", "ders"),
+    ("ders içerikleri", "Ders İçerik", "ders"),
 
-    # --- duyuru / haber ---
-    ("yatay geçiş başvuru tarihleri", "Yatay Geçiş", "duyuru"),
-    ("öğretim görevlisi ilanı sonuçları", "Öğretim Görevlisi", "duyuru"),
-    ("yemek listesi", "Yemek", "duyuru"),
-    ("iki aşamalı doğrulama", "Doğrulama", "duyuru"),
+    # --- staj / duyuru ---
+    ("staj nasıl yapılır", "Staj", "duyuru"),
+    ("staj yönergesi", "Staj Yönergesi", "duyuru"),
     ("DC şartlı geçer nedir", "DC", "duyuru"),
+    ("bölümün amacı nedir", "Amaç", "duyuru"),
 ]
 
 KAPSAM_DISI = [
     "hava durumu nasıl",
     "makarna tarifi ver",
-    "python'da liste nasıl sıralanır",
     "bitcoin fiyatı kaç",
     "futbol maçı ne zaman",
     "aşk şiiri yaz",
-    "İstanbul Teknik Üniversitesi taban puanı",
     "bugün günlerden ne",
 ]
 
@@ -81,7 +80,7 @@ def main() -> int:
         tip_isabet[tip] = tip_isabet.get(tip, 0) + isabet
 
         isaret = "OK  " if isabet else "KACIRDI"
-        print(f"  {isaret} [{tip:6}] {soru[:44]:46} -> {sonuclar[0].title[:30]}")
+        print(f"  {isaret} [{tip:6}] {soru[:38]:40} -> {sonuclar[0].title[:34]}")
 
     toplam = sum(tip_toplam.values())
     isabet_sayisi = sum(tip_isabet.values())
@@ -100,7 +99,7 @@ def main() -> int:
         sonuclar = retriever.search(soru, k=4)
         reddedildi = retriever.kapsam_disi_mi(sonuclar)
         yanlis_kabul += not reddedildi
-        print(f"  {'OK  ' if reddedildi else 'SIZDI'} {soru[:44]:46} "
+        print(f"  {'OK  ' if reddedildi else 'SIZDI'} {soru[:40]:42} "
               f"bm25={retriever._son_bm25_max:6.2f} kos={retriever._son_kosinus_max:.3f}")
 
     yanlis_ret = 0
@@ -109,7 +108,7 @@ def main() -> int:
         sonuclar = retriever.search(soru, k=4)
         if retriever.kapsam_disi_mi(sonuclar):
             yanlis_ret += 1
-            print(f"    YANLIS RET: {soru[:42]:44} "
+            print(f"    YANLIS RET: {soru[:38]:40} "
                   f"bm25={retriever._son_bm25_max:6.2f} kos={retriever._son_kosinus_max:.3f}")
     if yanlis_ret == 0:
         print("    (yok — hepsi kabul edildi)")

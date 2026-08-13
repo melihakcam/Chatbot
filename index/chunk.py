@@ -61,44 +61,27 @@ def _kisi_satiri_mi(satir: str) -> bool:
 
 
 def split_personel(kaynak: dict) -> list[dict]:
-    """Her hoca kendi parçası olur; bölüm adı her parçaya eklenir.
+    """Personel kaydını parçalar. Kısa kayıtlar BÖLÜNMEZ.
 
-    Personel sayfası "Unvan Ad Soyad" satırlarının art arda geldiği bir liste.
-    İleride A tarafı telefon rehberini eklerse bir kişiye ait birden fazla
-    satır (unvan+ad, sonra telefon, sonra e-posta) gelebilir — bu yüzden
-    sınır tespiti "yeni unvan satırı görene kadar topla" mantığıyla yapılır,
-    tek satır varsayılmaz.
+    ÖNEMLİ: Bu fonksiyon eskiden liste sayfasını kişi başına bölüyordu. Crawler
+    yazıldıktan sonra veri şekli değişti — artık her hoca ZATEN ayrı bir kayıt,
+    ayrıca kadro listesi de ayrı bir kayıt. İkinci kez bölmek zarar veriyordu:
+
+        Kadro listesi (8 isim, tek sayfa) -> 8 ayrı parçaya bölünüyordu.
+        Sonuç: indekste "bölümün tüm hocaları" diye bir parça KALMIYOR.
+        "Bölümde hangi hocalar var" sorusunda bağlama en fazla 2 isim
+        girebiliyordu (kaynak başına kota 2) ve bot listenin tamamını
+        asla göremiyordu.
+
+    Yeni kural: bütçeye sığıyorsa tek parça (kadro listesi böyle korunuyor),
+    sığmıyorsa kayan pencere (uzun hoca profilleri böyle bölünüyor).
     """
-    satirlar = [s for s in kaynak["text"].split("\n") if s.strip()]
-
-    ilk_kisi = next((i for i, s in enumerate(satirlar) if _kisi_satiri_mi(s)), None)
-    if ilk_kisi is None:
-        # Kişi satırı bulunamadı (beklenmeyen format) — tek parça olarak bırak.
+    if _kelime_sayisi(kaynak["text"]) <= PENCERE_KELIME:
         kayit = _kayit_yap(kaynak, 0, kaynak["text"])
         return [kayit] if kayit else []
 
-    baglam = " — ".join(satirlar[:ilk_kisi]) or (kaynak["unit"] or "")
-
-    parcalar: list[dict] = []
-    guncel_kisi: list[str] = []
-
-    def kaydet():
-        if not guncel_kisi:
-            return
-        metin = f"{baglam}\n" + "\n".join(guncel_kisi)
-        kayit = _kayit_yap(kaynak, len(parcalar), metin)
-        if kayit:
-            parcalar.append(kayit)
-
-    for satir in satirlar[ilk_kisi:]:
-        if _kisi_satiri_mi(satir):
-            kaydet()
-            guncel_kisi = [satir]
-        else:
-            guncel_kisi.append(satir)
-    kaydet()
-
-    return parcalar
+    baslik = kaynak["title"]
+    return _kayan_pencere(kaynak, onek=f"{baslik}\n")
 
 
 # ---------------------------------------------------------------- dönem-bloklu (tablo/pdf)
@@ -269,6 +252,19 @@ def chunk_record(kaynak: dict) -> list[dict]:
 # "Program Seçiniz" yazıyor (asıl liste AJAX ucunda) ama "hangi dersler var"
 # sorusunda 1. sıraya çıkıp gerçek ders listesini 4'lük bağlamdan dışarı itiyordu.
 ICERIKSIZ_ISARETLER = ("program seçiniz", "seçiniz", "tıklayınız")
+
+# PDF alt bilgisi — her sayfada tekrarlanan telif/iletişim satırları.
+#
+# NEDEN ELENİYOR: Kalite belgelerinin her sayfasında aynı telif satırı var.
+# Bu satırlar parçanın gövdesini oluşturunca, "bölümde hangi hocalar var"
+# sorusunda ilk üç sırayı "© Copyright ... Tüm Hakları Saklıdır" parçaları
+# dolduruyor ve gerçek personel kaydı dışarı itiliyordu. Bilgi taşımıyorlar.
+ALTBILGI_DESENLERI = re.compile(
+    r"(?i)(©\s*copyright|tüm hakları saklıdır|bilgi için\s*:|"
+    r"kalitekoordinatorlugu@|sayfa\s+\d+\s*/\s*\d+|"
+    # Kalite belgelerinin sayfa başlığı: her belgede birebir aynı.
+    r"doküman\s*no|i̇lk yayın tarihi|ilk yayın tarihi|revizyon\s*(no|tarihi))"
+)
 ANLAMLI_MIN_KELIME = 8
 
 # Personel parçaları kısa olmak ZORUNDA — bir hoca kaydı "Doç. Dr. Emine BAŞ"
@@ -279,6 +275,8 @@ UZUNLUK_MUAF_TIPLER = {"personel"}
 def anlamli_mi(parca: dict) -> bool:
     """Parça gerçek bilgi taşıyor mu? Başlık tekrarı ve menü kalıntısı sayılmaz."""
     satirlar = [s.strip() for s in parca["text"].split("\n") if s.strip()]
+    # Alt bilgi satırları bilgi taşımıyor, "içerik var mı" sayımına girmemeli.
+    satirlar = [s for s in satirlar if not ALTBILGI_DESENLERI.search(s)]
 
     # Başlıkla aynı olan satırları çıkar — geriye kalan asıl içeriktir.
     baslik_parcalari = {parca["title"].casefold()}
@@ -296,13 +294,21 @@ def anlamli_mi(parca: dict) -> bool:
     return len(metin.split()) >= ANLAMLI_MIN_KELIME
 
 
+def altbilgiyi_temizle(parca: dict) -> dict:
+    """Alt bilgi satırlarını parça metninden siler."""
+    satirlar = [s for s in parca["text"].split("\n")
+                if not ALTBILGI_DESENLERI.search(s)]
+    parca["text"] = "\n".join(satirlar).strip()
+    return parca
+
+
 def chunk_pages(kayitlar: list[dict]) -> list[dict]:
     parcalar: list[dict] = []
     elenen = 0
     for kayit in kayitlar:
         for parca in chunk_record(kayit):
             if anlamli_mi(parca):
-                parcalar.append(parca)
+                parcalar.append(altbilgiyi_temizle(parca))
             else:
                 elenen += 1
     if elenen:

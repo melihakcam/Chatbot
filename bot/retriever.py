@@ -46,22 +46,71 @@ ADAY_SAYISI = 30    # her yöntemden kaç aday alınacak (birleştirmeden önce)
 # Kota, farklı kaynaklara yer açarak bunu kesiyor.
 KAYNAK_BASINA_MAKS = 2
 
-# --- KAPSAM EŞİKLERİ (ölçümle belirlendi) ---
+# Başlık eşleşmesi bonusu.
 #
-# İlk denemede kapsam kapısı sadece kosinüse bakıyordu ve ÇALIŞMADI:
-# e5 modeli her metni birbirine biraz benzer görüyor, skorlar 0.79-0.92 gibi
-# dar bir banda sıkışıyor. Ölçüm sonucu (14 soru, 8 kapsam içi / 6 dışı):
+# NEDEN VAR: Bölümde birbirine çok benzeyen ama FARKLI belgeler var:
+#   "Ders Listesi (AKTS) — DÖNEM 1"     müfredat: hangi ders, kaç kredi
+#   "2025-2026 Güz Dönemi Ders Programı" haftalık çizelge: hangi gün, saat
+#   "2025-2026 Güz yarıyılı final takvimi" sınav tarihleri
+# Hepsinde ders kodları ve dönem adları geçiyor, gövde metinleri birbirine
+# benziyor. "Birinci dönemde hangi dersler var" sorusunda model haftalık
+# çizelgeden cevap veriyordu — doğru belge müfredattı.
 #
-#   soru tipi     kosinüs        BM25
-#   kapsam içi    0.817 - 0.923   4.59 - 18.18
-#   kapsam dışı   0.805 - 0.842   0.00 -  3.36
+# Ayırt edici bilgi GÖVDEDE değil BAŞLIKTA duruyor. Sorgu kelimeleri başlıkta
+# geçiyorsa o parçaya bonus veriliyor (alan ağırlıklı arama).
+BASLIK_BONUSU = 0.015
+
+# Sorgu eş anlamlı genişletmesi (sadece BM25 tarafı).
 #
-# Kosinüs aralıkları ÇAKIŞIYOR (0.817 içi < 0.842 dışı) -> tek başına kullanılamaz.
-# BM25 ise ayırıyor: kapsam dışı sorularda kelime örtüşmesi yok, skor sıfıra yakın.
-# Bu yüzden kapı BM25 üzerine kuruldu; kosinüs sadece kelime örtüşmesi olmayan
-# ama anlamca çok yakın sorular için ikinci bir yol olarak duruyor.
-BM25_ESIGI = 4.0
-KOSINUS_YEDEK_ESIGI = 0.87
+# NEDEN VAR: Kullanıcı "hoca" der, sitede "Akademik Personel" yazar. Bu kelime
+# hiçbir kayıtta geçmediği için "bölümde hangi hocalar var" sorusunda personel
+# kayıtları BM25'te sıfır alıyor ve sonuçlara hiç giremiyordu; yerlerine her
+# PDF'in altındaki "Bölüm Başkanı" imza satırları çıkıyordu.
+#
+# Embedding tarafına dokunulmuyor: anlamsal arama bu ilişkiyi zaten kısmen
+# yakalıyor, sorun kelime eşleşmesinde.
+ES_ANLAMLILAR = {
+    "hoca": ["akademik", "personel"],
+    "hocalar": ["akademik", "personel"],
+    "hocalari": ["akademik", "personel"],
+    "akademisyen": ["akademik", "personel"],
+    "akademisyenler": ["akademik", "personel"],
+    "ogretim": ["akademik", "personel"],
+    "kadro": ["akademik", "personel"],
+    "telefonu": ["telefon", "iletisim"],
+    "maili": ["posta", "iletisim"],
+    "mail": ["posta", "iletisim"],
+}
+
+# --- KAPSAM EŞİKLERİ (ölçümle belirlendi, eval/retrieval_test.py) ---
+#
+# Kapı İKİ koşulu birden arar. Sebep: hiçbir sinyal TEK BAŞINA ayırmıyor.
+# Tek bölüm verisinde (109 parça, 18 kapsam içi / 6 dışı soru) ölçüm:
+#
+#            BM25              kosinüs
+#   içi      3.20 - 20.89      0.832 - 0.876
+#   dışı     0.00 -  3.83      0.797 - 0.843
+#
+# İki aralık da ÇAKIŞIYOR: BM25'te 3.20 (içi) < 3.83 (dışı),
+# kosinüste 0.832 (içi) < 0.843 (dışı). Yani "BM25 yeterliyse kabul et"
+# de "kosinüs yeterliyse kabul et" de yanlış sonuç veriyor.
+#
+# Ama çakışmalar FARKLI sorulardan geliyor:
+#   "aşk şiiri yaz"      BM25 3.83 (yüksek — "yaz" stajla eşleşiyor) ama kosinüs 0.812
+#   "bugün günlerden ne" kosinüs 0.843 (yüksek) ama BM25 0.00
+# İkisini birden isteyince ayırım tam oluyor.
+#
+# NOT: Bu eşikler korpusa bağlı. Veri seti değişirse (yeni bölüm eklenirse,
+# tüm üniversiteye çıkılırsa) yeniden ölçülmeli — eval/retrieval_test.py
+# "yanlış ret" ve "sızıntı" satırlarını gösteriyor.
+BM25_ESIGI = 3.0
+KOSINUS_ESIGI = 0.82
+
+# İkinci yol: kelime örtüşmesi zayıf ama anlamca çok yakın sorular için.
+# "Staj yapmak için ne gerekiyor" BM25'te 2.35 alıyor (eşiğin altı) ama
+# kosinüsü 0.868 — kapsam dışı hiçbir sorunun ulaşamadığı bir seviye
+# (kapsam dışı kosinüs tavanı 0.843). Bu yol olmadan geçerli soru reddediliyordu.
+KOSINUS_TEK_BASINA_ESIGI = 0.85
 
 
 @dataclass
@@ -113,7 +162,11 @@ class Retriever:
 
         # BM25 sorgusu indeksle AYNI normalize_tr'den gecmek zorunda,
         # yoksa Turkce buyuk/kucuk harf tuzagi eslesmeyi bozar.
-        bm25_skorlar = self.bm25.get_scores(tokenize_tr(soru))
+        soru_tokenleri = tokenize_tr(soru)
+        genisletilmis = list(soru_tokenleri)
+        for token in soru_tokenleri:
+            genisletilmis.extend(ES_ANLAMLILAR.get(token, ()))
+        bm25_skorlar = self.bm25.get_scores(genisletilmis)
         bm25_sira = np.argsort(-bm25_skorlar)[:ADAY_SAYISI]
 
         # Kapsam kapisi bu iki sayiya bakar (bkz. kapsam_disi_mi).
@@ -126,11 +179,33 @@ class Retriever:
         for sira, idx in enumerate(bm25_sira):
             rrf[int(idx)] = rrf.get(int(idx), 0.0) + 1.0 / (RRF_K + sira + 1)
 
-        # Kaynak cesitliligi: ayni sayfadan gelen parcalar sonuclari doldurmasin.
+        # Baslik bonusu: ayirt edici bilgi govdede degil baslikta duruyor
+        # (mufredat / haftalik cizelge / sinav takvimi ayrimi gibi).
+        soru_kelimeleri = set(tokenize_tr(soru))
+        if soru_kelimeleri:
+            for idx in list(rrf):
+                baslik_kelimeleri = set(tokenize_tr(self.chunks[idx]["title"]))
+                ortak = soru_kelimeleri & baslik_kelimeleri
+                if ortak:
+                    rrf[idx] += BASLIK_BONUSU * len(ortak) / len(soru_kelimeleri)
+
+        # Her yöntemin BİRİNCİSİNE slot garantisi.
+        #
+        # NEDEN: RRF iki sıralamayı toplar. Bir yöntemde 1. ama diğerinde 34.
+        # olan parça tek katkı alır (1/61) ve iki yöntemde de vasat olan
+        # parçalara (iki katkı) yenilir. Ölçülen somut vaka: "bölümde hangi
+        # hocalar var" sorusunda kadro listesi BM25'te 1., kosinüste 34. —
+        # sonuçlara hiç giremiyordu, yerine görev tanımı PDF'leri çıkıyordu.
+        garantili = [int(bm25_sira[0]), int(dense_sira[0])] if len(self.chunks) else []
+
         siralanmis = sorted(rrf.items(), key=lambda x: -x[1])
+        sira_indeksleri = [i for i in garantili if i in rrf]
+        sira_indeksleri += [i for i, _ in siralanmis if i not in sira_indeksleri]
+
         en_iyiler: list[tuple[int, float]] = []
         kaynak_sayaci: dict[str, int] = {}
-        for idx, rrf_skor in siralanmis:
+        for idx in sira_indeksleri:
+            rrf_skor = rrf[idx]
             kaynak = self.chunks[idx]["url"]
             if kaynak_sayaci.get(kaynak, 0) >= KAYNAK_BASINA_MAKS:
                 continue
@@ -157,9 +232,11 @@ class Retriever:
         """
         if not sonuclar:
             return True
-        if getattr(self, "_son_bm25_max", 0.0) >= BM25_ESIGI:
-            return False
-        return getattr(self, "_son_kosinus_max", 0.0) < KOSINUS_YEDEK_ESIGI
+        bm25 = getattr(self, "_son_bm25_max", 0.0)
+        kosinus = getattr(self, "_son_kosinus_max", 0.0)
+        yeterli = ((bm25 >= BM25_ESIGI and kosinus >= KOSINUS_ESIGI)
+                   or kosinus >= KOSINUS_TEK_BASINA_ESIGI)
+        return not yeterli
 
 
 if __name__ == "__main__":
