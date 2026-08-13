@@ -129,19 +129,29 @@ class ColabBackend:
         if "gemma" in self.model.lower() and sistem:
             mesajlar = [{"role": "user", "content": f"{sistem}\n\n{prompt}"}]
 
+        # transformers 4.4x ile apply_chat_template artik duz tensor degil
+        # BatchEncoding donduruyor; .shape yok, AttributeError aliniyordu.
+        # return_dict=True ile sozluk isteniyor, generate'e **ile aciliyor.
         girdi = self.tokenizer.apply_chat_template(
-            mesajlar, add_generation_prompt=True, return_tensors="pt"
-        ).to(self.llm.device)
+            mesajlar, add_generation_prompt=True, return_tensors="pt", return_dict=True
+        )
+        if torch.is_tensor(girdi):          # eski surumler: duz tensor
+            girdi = {"input_ids": girdi}
+        girdi = {ad: t.to(self.llm.device) for ad, t in girdi.items()}
+        istem_uzunlugu = girdi["input_ids"].shape[-1]
 
         with torch.no_grad():
             cikti = self.llm.generate(
-                girdi,
+                **girdi,
                 max_new_tokens=maks_token,
                 temperature=max(sicaklik, 0.01),
                 do_sample=sicaklik > 0,
                 pad_token_id=self.tokenizer.eos_token_id,
             )
-        return self.tokenizer.decode(cikti[0][girdi.shape[-1]:], skip_special_tokens=True).strip()
+        # Sadece uretilen kisim: istem cikti icinde tekrar geliyor.
+        return self.tokenizer.decode(
+            cikti[0][istem_uzunlugu:], skip_special_tokens=True
+        ).strip()
 '''
 
 # ---------------------------------------------------------------- HÜCRE 4: karşılaştırma
