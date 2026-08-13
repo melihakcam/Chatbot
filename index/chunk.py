@@ -314,6 +314,42 @@ def gorev_tanimi_mi(metin: str) -> bool:
     return sum(i in dusuk for i in GOREV_TANIMI_ISARETLERI) >= 2
 
 
+# --- Harf aralığı bozuk PDF metni ---
+#
+# Bazı PDF'ler her karakteri ayrı ayrı konumlandırıyor; pypdf bunu harfler
+# arasında boşlukla çıkarıyor:
+#
+#     "G ö r e v  U n v a n ı :"   (kelime arası ÇİFT boşluk)
+#
+# Üç yeri birden bozuyordu, hiçbiri hata vermeden:
+#   1. gorev_tanimi_mi() "görev unvanı" arıyor, bulamıyor -> belge
+#      işaretlenmiyor -> sıralama cezası uygulanmıyor. Ölçülen sonuç:
+#      "bölüm başkanı kim" sorusunda ilk 4 sonucun tamamı görev tanımı
+#      PDF'i, isim geçen personel sayfası ilk 4'e hiç giremiyor.
+#   2. BM25 her harfi ayrı token sayıyor; belge kelime aramasında görünmez.
+#   3. Embedding harf dizisini anlamsız buluyor.
+#
+# Onarım satır bazında: kelime arası çift boşluksa tek boşluklar harf
+# aralığıdır. Eşik yüksek tutuldu (>=8 token ve %60'ı tek karakter) ki
+# "A B C" gibi kısa normal satırlar bozulmasın.
+def _harf_araligi_bozuk_mu(satir: str) -> bool:
+    parcalar = satir.split()
+    if len(parcalar) < 8:
+        return False
+    return sum(1 for p in parcalar if len(p) == 1) / len(parcalar) >= 0.6
+
+
+def bosluklari_onar(metin: str) -> str:
+    """'G ö r e v  U n v a n ı' -> 'Görev Unvanı'. Sağlam satırlara dokunmaz."""
+    onarilmis = []
+    for satir in metin.split("\n"):
+        if _harf_araligi_bozuk_mu(satir):
+            # Once kelime siniri (>=2 bosluk) korunur, sonra harf araliklari silinir.
+            satir = re.sub(r" {2,}", "\x00", satir).replace(" ", "").replace("\x00", " ")
+        onarilmis.append(satir)
+    return "\n".join(onarilmis)
+
+
 def altbilgiyi_temizle(parca: dict) -> dict:
     """Alt bilgi satırlarını parça metninden siler."""
     satirlar = [s for s in parca["text"].split("\n")
@@ -326,6 +362,10 @@ def chunk_pages(kayitlar: list[dict]) -> list[dict]:
     parcalar: list[dict] = []
     elenen = 0
     for kayit in kayitlar:
+        # Harf araligi bozuk PDF metni once onarilir — parcalama, isaretleme
+        # ve arama zincirinin tamami bu metni okuyor (bkz. bosluklari_onar).
+        kayit = {**kayit, "text": bosluklari_onar(kayit["text"])}
+
         # İşaretleme KAYIT seviyesinde: form başlıkları ("Görev Unvanı:",
         # "Bağlı Alt Unvanlar:") belgenin sadece ilk parçasında geçiyor.
         # Parça bazında bakınca aynı belgenin ikinci yarısı işaretsiz kalıyor

@@ -64,7 +64,7 @@ BASLIK_BONUSU = 0.015
 # Silmek yerine geri çekiyoruz: "bölüm başkanının görevleri neler" gibi bir
 # soru gelirse bu belgeler DOĞRU cevap. Ceza sadece soru görev/sorumluluk
 # sormadığında uygulanıyor.
-GOREV_TANIMI_CEZASI = 0.55
+GOREV_TANIMI_CEZASI = 0.35
 GOREV_KELIMELERI = {"gorev", "gorevi", "gorevleri", "sorumluluk", "sorumluluklari",
                     "yetki", "yetkileri", "tanimi", "komisyon", "komisyonu"}
 
@@ -85,6 +85,13 @@ ES_ANLAMLILAR = {
     "akademisyenler": ["akademik", "personel"],
     "ogretim": ["akademik", "personel"],
     "kadro": ["akademik", "personel"],
+    # Sitede "Arş. Gör." yazıyor, kullanıcı "araştırma görevlisi" diyor.
+    # tokenize_tr noktalamayı attığı için karşılıkları "ars" ve "gor".
+    # DİKKAT: bu kelimeler GOREV_KELIMELERI'nde YOK — orada "gorevleri"
+    # (sorumluluklar) var, burada "gorevlileri" (kişiler). Karışırsa görev
+    # tanımı cezası yanlışlıkla kapanır.
+    "gorevlisi": ["ars", "gor", "personel"],
+    "gorevlileri": ["ars", "gor", "personel"],
     "telefonu": ["telefon", "iletisim"],
     "maili": ["posta", "iletisim"],
     "mail": ["posta", "iletisim"],
@@ -187,15 +194,6 @@ class Retriever:
         for sira, idx in enumerate(bm25_sira):
             rrf[int(idx)] = rrf.get(int(idx), 0.0) + 1.0 / (RRF_K + sira + 1)
 
-        # Görev tanımı belgeleri: soru görev/sorumluluk sormuyorsa geri çekilir.
-        # Bu belgeler bir rolün sorumluluklarını anlatıyor, o rolde kimin
-        # olduğunu değil (bkz. index/chunk.py, gorev_tanimi_mi).
-        gorev_sorusu = bool(GOREV_KELIMELERI & set(tokenize_tr(soru)))
-        if not gorev_sorusu:
-            for idx in list(rrf):
-                if self.chunks[idx].get("gorev_tanimi"):
-                    rrf[idx] *= GOREV_TANIMI_CEZASI
-
         # Baslik bonusu: ayirt edici bilgi govdede degil baslikta duruyor
         # (mufredat / haftalik cizelge / sinav takvimi ayrimi gibi).
         soru_kelimeleri = set(tokenize_tr(soru))
@@ -205,6 +203,22 @@ class Retriever:
                 ortak = soru_kelimeleri & baslik_kelimeleri
                 if ortak:
                     rrf[idx] += BASLIK_BONUSU * len(ortak) / len(soru_kelimeleri)
+
+        # Görev tanımı belgeleri: soru görev/sorumluluk sormuyorsa geri çekilir.
+        # Bu belgeler bir rolün sorumluluklarını anlatıyor, o rolde kimin
+        # olduğunu değil (bkz. index/chunk.py, gorev_tanimi_mi).
+        #
+        # SIRA ÖNEMLİ — ceza başlık bonusundan SONRA uygulanıyor. Önce
+        # uygulandığında bonus cezayı telafi ediyordu: "Bölüm Başkanı (PDF)"
+        # başlığı "bölüm başkanı kim" sorusunun iki kelimesini birden içeriyor,
+        # bonus 0.010 alıyor; bu RRF'in tek katkısından (≈0.016) küçük değil.
+        # Sonuç: ceza çarpılıyor ama üstüne eklenen bonus onu geri getiriyordu
+        # ve isim geçen bölüm sayfası 4. sıraya düşüyordu.
+        gorev_sorusu = bool(GOREV_KELIMELERI & set(tokenize_tr(soru)))
+        if not gorev_sorusu:
+            for idx in list(rrf):
+                if self.chunks[idx].get("gorev_tanimi"):
+                    rrf[idx] *= GOREV_TANIMI_CEZASI
 
         # Her yöntemin BİRİNCİSİNE slot garantisi.
         #

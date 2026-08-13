@@ -22,8 +22,12 @@ from bot.retriever import Retriever
 # (soru, beklenen kaynakta geçmesi gereken ifade, soru tipi)
 KAPSAM_ICI = [
     # --- kişi / iletişim ---
+    # Birim adı taşıyan sorular: kapsam üç bölüme çıkınca "bölüm başkanı kim"in
+    # üç geçerli cevabı oldu ve ölçüm sistem doğru çalışırken HATA saymaya
+    # başladı. Soru birimi söylemezse ölçtüğü şey doğruluk değil şans olur.
     ("bölümde hangi hocalar var", "Doç. Dr.", "kisi"),
-    ("bölüm başkanı kim", "Hakan YILMAZ", "kisi"),
+    ("Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölüm başkanı kim",
+     "Hakan YILMAZ", "kisi"),
     ("Ayşe Beşkirli hangi dersleri veriyor", "BEŞKİRLİ", "kisi"),
     ("araştırma görevlileri kimler", "Arş. Gör.", "kisi"),
     ("bölümün iletişim bilgileri", "İletişim", "kisi"),

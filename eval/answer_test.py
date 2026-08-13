@@ -20,11 +20,16 @@ from common.console import setup_stdout_utf8
 from bot.answer import Chatbot
 
 # (soru, cevapta gecmesi beklenen ifade, tip)
+# NEDEN SORULARDA BİRİM ADI VAR: kapsam tek bölümken "bölüm başkanı kim"in tek
+# doğru cevabı vardı. Kapsam üç bölüme çıkınca aynı soru üç geçerli cevaplı hale
+# geldi ve ölçüm, sistem doğru çalışırken bile HATA saymaya başladı (Bilgisayar
+# Mühendisliği'nin başkanını getiriyor, test YZM'ninkini bekliyordu). Soru birimi
+# söylemezse ölçtüğü şey doğruluk değil şans olur.
 SORULAR = [
-    ("Bölümde hangi hocalar var", "YILMAZ", "kisi"),
-    ("Bölüm başkanı kim", "Hakan", "kisi"),
+    ("Yapay Zeka ve Makine Öğrenmesi bölümünde hangi hocalar var", "YILMAZ", "kisi"),
+    ("Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölüm başkanı kim", "Hakan", "kisi"),
+    ("Bilgisayar Mühendisliği bölüm başkanı kim", "BABALIK", "kisi"),
     ("Araştırma görevlileri kimler", "Arş", "kisi"),
-    ("Bölümün amacı nedir", "yapay zeka", "genel"),
     ("Staj yapmak için ne gerekiyor", "staj", "duyuru"),
     ("DC şartlı geçer ne demek", "DC", "duyuru"),
     ("Birinci dönemde hangi dersler var", "Matematik", "ders"),
@@ -36,8 +41,13 @@ KAPSAM_DISI = ["makarna tarifi ver", "bitcoin fiyatı kaç"]
 YONLENDIRME = [("notlarımı nereden görürüm", "obs.ktun.edu.tr")]
 
 # Takip sorusu: ikinci soruda bölüm adı GEÇMİYOR, geçmişten taşınmalı.
+#
+# Birinci soru birimi söylüyor ki ölçülen şey HAFIZA olsun. Birimsiz sorulduğunda
+# ("Bölümde hangi hocalar var") arama üç bölümü birden getiriyor, takip sorusu da
+# rastgele birinin başkanını veriyordu; test "Hakan" bekleyip "BABALIK" görünce
+# TUTMADI diyordu — oysa hafıza çalışıyordu, taşınacak birim belirsizdi.
 HAFIZA_TESTI = [
-    ("Bölümde hangi hocalar var", None),
+    ("Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölümünde hangi hocalar var", None),
     ("peki bölüm başkanı kim", "Hakan"),
 ]
 
