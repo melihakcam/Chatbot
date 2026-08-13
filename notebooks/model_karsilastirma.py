@@ -22,48 +22,59 @@ KULLANIM (Colab):
 # /content/ktun oluşmaz, sonraki hücrelerde "No module named 'bot'" hatası alınır.
 # Bu yüzden klonlama denenip SONUCU KONTROL EDİLİYOR ve başarısızsa ne yapılacağı
 # yazdırılıyor — sessizce devam edip kafa karıştıran hataya yol açmıyor.
+# Kod Colab'a ELLE yükleniyor (repo private, git clone kimlik doğrulaması istiyor).
+#
+# Bu hücre "ne yüklediğini" varsaymıyor: zip de olabilir, klasör de, dosyaların
+# doğrudan /content'e atılmış hâli de. Proje kökünü `bot/` ve `index/` klasörlerini
+# arayarak kendisi buluyor. Böylece yükleme biçimi değişince hücreyi düzenlemek
+# gerekmiyor — ve yanlış dizinde çalışıp "No module named 'bot'" hatası vermiyor.
 KURULUM = r"""
 !pip -q install sentence-transformers rank-bm25 transformers accelerate bitsandbytes
 
-import os, sys, subprocess
-KOK = "/content/ktun"
+import os, sys, glob, zipfile
 
-# Yol A: private repo icin token. Colab'da sol taraftaki anahtar simgesinden
-# "GITHUB_TOKEN" adiyla secret ekleyip erisimi acarsan burasi otomatik calisir.
-token = None
-try:
-    from google.colab import userdata
-    token = userdata.get("GITHUB_TOKEN")
-except Exception:
-    pass
+def proje_kokunu_bul(basla="/content", derinlik=3):
+    for kok, klasorler, _ in os.walk(basla):
+        if kok.count(os.sep) - basla.count(os.sep) > derinlik:
+            klasorler[:] = []
+            continue
+        if {"bot", "index", "common"} <= set(klasorler):
+            return kok
+    return None
 
-if not os.path.isdir(KOK):
-    url = (f"https://{token}@github.com/melihakcam/Chatbot.git" if token
-           else "https://github.com/melihakcam/Chatbot.git")
-    sonuc = subprocess.run(["git", "clone", url, KOK], capture_output=True, text=True)
-    if sonuc.returncode != 0:
-        print("KLONLAMA BASARISIZ (repo private).\n")
-        print("Yol A — token ile:")
-        print("  1. github.com/settings/tokens -> Generate new token (classic), 'repo' yetkisi")
-        print("  2. Colab solda anahtar simgesi -> Yeni secret: ad GITHUB_TOKEN, deger token")
-        print("  3. 'Not defteri erisimi' anahtarini ac, bu hucreyi tekrar calistir\n")
-        print("Yol B — elle yukleme (token istemiyorsan):")
-        print("  1. Bilgisayarinda D:\\ktunChatbot klasorunu zip'le")
-        print("  2. Colab solda dosya simgesi -> zip'i /content'e surukle")
-        print("  3. Asagidaki satiri calistir:")
-        print("     !unzip -q /content/ktunChatbot.zip -d /content/ktun\n")
-        raise SystemExit("Once repoyu Colab'a getir, sonra devam et.")
+KOK = proje_kokunu_bul()
+
+# Bulunamadiysa: ortada zip varsa ac, tekrar ara.
+if KOK is None:
+    for z_yol in glob.glob("/content/**/*.zip", recursive=True):
+        with zipfile.ZipFile(z_yol) as z:
+            z.extractall("/content/ktun")
+        print(f"Acildi: {z_yol}")
+    KOK = proje_kokunu_bul()
+
+if KOK is None:
+    raise SystemExit(
+        "Proje bulunamadi.\n"
+        "  Soldaki KLASOR simgesine tiklayip proje klasorunu (veya zip'ini)\n"
+        "  /content icine yukle, sonra bu hucreyi tekrar calistir.\n"
+        "  Gereken klasorler: bot/ index/ common/ eval/ data/sample/"
+    )
 
 os.chdir(KOK)
 sys.path.insert(0, KOK)        # 'bot', 'index', 'common' import edilebilsin
-print("Hazir:", os.getcwd())
+os.environ["KTUN_KOK"] = KOK   # sonraki hucreler bunu kullaniyor
+
+print("Proje koku:", KOK)
 print("Klasorler:", sorted(d for d in os.listdir() if os.path.isdir(d) and not d.startswith(".")))
+ornek = os.path.join(KOK, "data", "sample", "pages.sample.jsonl")
+print("Ornek veri:", "VAR" if os.path.exists(ornek) else "YOK — indeks kurulamaz")
 """
 
 # ---------------------------------------------------------------- HÜCRE 2: indeks
 # data/raw gitignore'da, repoda data/sample var — Colab bununla çalışır.
 INDEKS = r"""
-%cd /content/ktun
+import os
+os.chdir(os.environ["KTUN_KOK"])
 !python -m index.build_index --input data/sample/pages.sample.jsonl
 """
 
@@ -122,9 +133,10 @@ import os, sys, time, gc, torch
 
 # Guvenlik agi: hucreler sirasiz calistirilirsa veya oturum yeniden baglanirsa
 # calisma dizini /content'e doner ve "No module named 'bot'" hatasi alinir.
-KOK = "/content/ktun"
-if os.getcwd() != KOK:
-    os.chdir(KOK)
+KOK = os.environ.get("KTUN_KOK")
+if not KOK:
+    raise SystemExit("Once 1. hucreyi calistir (proje kokunu o buluyor).")
+os.chdir(KOK)
 if KOK not in sys.path:
     sys.path.insert(0, KOK)
 

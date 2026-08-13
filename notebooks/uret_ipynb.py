@@ -54,7 +54,16 @@ def kod_hucre(metin: str) -> dict:
 def main() -> int:
     hucreler = [
         markdown_hucre(BASLIK),
-        markdown_hucre("## 1. Kurulum\nRepoyu klonlar, bağımlılıkları kurar."),
+        markdown_hucre(
+            "## 1. Kurulum\n\n"
+            "**Önce proje dosyalarını yükle:** soldaki klasör simgesine tıkla, "
+            "proje klasörünü (veya zip'ini) `/content` içine sürükle. "
+            "Sonra bu hücreyi çalıştır.\n\n"
+            "Hücre proje kökünü kendisi bulur — zip, klasör ya da doğrudan atılmış "
+            "dosyalar, hepsi çalışır. Repo private olduğu için Colab klonlayamıyor.\n\n"
+            "Gereken klasörler: `bot/ index/ common/ eval/ data/sample/` "
+            "(model ağırlıkları ve indeks gerekmez, Colab kendisi üretir)."
+        ),
         kod_hucre(KURULUM),
         markdown_hucre("## 2. İndeks\n"
                        "`data/raw/` gitignore'da; Colab repodaki örnek veriyle çalışır."),
