@@ -185,11 +185,11 @@ Tek bölüm verisiyle (67 kayıt → 104 parça) ölçüldü.
 
 | Ölçüt | Sonuç |
 |---|---|
-| Cevap doğruluğu | **7/8 (%88)** |
+| Cevap doğruluğu | **8/8 (%100)** |
 | Kapsam dışı reddi | 2/2 |
 | Yönlendirme | 1/1 |
 | Sohbet hafızası | çalışıyor |
-| Süre | 12–62 sn/soru (CPU, gemma2:2b) |
+| Süre | ort. 57.5 sn/soru (CPU, gemma2:2b) |
 
 **Model seçimi:** `gemma2:2b` varsayılan. `qwen2.5:1.5b-instruct` beş kat hızlı
 ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1. parçasında apaçık
@@ -208,11 +208,13 @@ Arama zinciri ve promptlar birebir aynı; değişen tek şey `bot/llm.py` yerine
 | Qwen2.5-1.5B-Instruct | 6/8 (%75) | 2/2 | 10.1 |
 | **Qwen2.5-7B-Instruct** | **8/8 (%100)** | 2/2 | 12.7 |
 
-**Ne çıkarıyoruz:** boyut bu görevde işe yarıyor ve ucuza geliyor — 7B, 1.5B'nin
-dört katı parametreyle soru başına yalnızca 2.6 saniye daha alıyor (GPU'da
-darboğaz üretim değil, model yükleme ve bellek). 7B'nin 8/8'i, sistemin
-kalan hatasının aramada değil modelde olduğunu da gösteriyor: aynı bağlamla
-lokal 2B 7/8 yapıyordu, 7B aynı bağlamdan 8/8 çıkarıyor.
+**Ne çıkarıyoruz:** asıl fark doğrulukta değil, maliyette. 7B, 1.5B'nin dört
+katı parametreyle soru başına yalnızca 2.6 saniye daha alıyor — GPU'da darboğaz
+üretim değil, model yükleme ve bellek. Doğruluk tarafında 7B'nin 8/8'i tek
+başına bir üstünlük değil: lokal `gemma2:2b` de aynı 8 soruda 8/8 yapıyor.
+Yani bu görevde 8 soruluk küme **2B ile doymuş** durumda; tavanı ölçmek için
+daha zor bir soru kümesi gerekiyor. 7B'nin farkı hızda ve muhtemelen kümenin
+ölçmediği zor durumlarda.
 
 **Bu tablonun söylemedikleri:**
 - `google/gemma-2-*` ölçülemedi (HF'de kapalı repo, lisans onayı + token
@@ -227,9 +229,10 @@ lokal 2B 7/8 yapıyordu, 7B aynı bağlamdan 8/8 çıkarıyor.
   vermez.
 
 **Karar:** lokal varsayılan `gemma2:2b` olarak kalıyor — 7B bu makinede zaten
-çalışmıyor, karşılaştırma bir seçim değil tavan ölçümü. Değeri şurada: GPU'lu
-bir ortama taşınırsa doğruluk %88'den %100'e çıkıyor ve süre 12-62 sn'den
-~13 sn'ye iniyor. Kod tarafında hiçbir değişiklik gerekmiyor.
+çalışmıyor, karşılaştırma bir seçim değil tavan ölçümü. Somut kazanç doğrulukta
+değil sürede: aynı 8 soru CPU'da ortalama 57.5 saniye alırken T4'te ~13 saniye,
+yani dört kat daha büyük modelle dört kattan fazla hız. Kod tarafında hiçbir
+değişiklik gerekmiyor; değişen tek şey `bot/llm.py`'nin arkasındaki backend.
 
 ### Bilinen kusurlar
 - "Birinci dönem dersleri neler" sorusunda görev tanımı PDF'i 1. sırada; doğru
