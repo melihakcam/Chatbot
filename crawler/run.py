@@ -44,6 +44,7 @@ KISI_SEKMELERI = (
 def kisi_sayfasi_mi(url: str) -> bool:
     return KISI_YOLU.lower() in url.lower()
 
+
 TUM_SITE_TOHUMLARI = [
     BASE + "/",
     BASE + "/tr/Universite/Tanitim",
@@ -70,12 +71,13 @@ class Gorev:
 
 class Crawler:
     def __init__(self, cekici: Cekici, depo: Depo, max_sayfa: int, max_derinlik: int,
-                 sadece_birim: bool = False):
+                 sadece_birim: bool = False, birimsiz: bool = False):
         self.cekici = cekici
         self.depo = depo
         self.max_sayfa = max_sayfa
         self.max_derinlik = max_derinlik
         self.sadece_birim = sadece_birim
+        self.birimsiz = birimsiz
         self.gorulen: set[str] = set()
         self.kuyruk: deque[Gorev] = deque()
         self.islenen = 0
@@ -92,6 +94,12 @@ class Crawler:
         #   · kişi     : hocaların /tr/Universite/PersonelBilgi/ sayfaları
         if self.sadece_birim and "/tr/Birim/" not in gorev.url \
                 and not scope.pdf_mi(gorev.url) and not kisi_sayfasi_mi(gorev.url):
+            return False
+
+        # Simetriği: duyuru/haber/takvim taranırken birim sayfalarına girme.
+        # Duyuru listeleri her birime link veriyor; filtresiz gezinti kapsam
+        # dışı bölümleri (Mimarlık, Teknik Bilimler MYO…) içeri sızdırıyor.
+        if self.birimsiz and "/tr/Birim/" in gorev.url:
             return False
         self.gorulen.add(anahtar)
         self.kuyruk.append(gorev)
@@ -145,6 +153,7 @@ class Crawler:
         # Yılsız tarih rozeti sadece duyuru/haber'de kabul ediliyor; başka
         # sayfalarda metindeki rastgele bir gün-ay ikilisi yayın tarihi sanılır.
         breadcrumb = gorev.breadcrumb or (["Akademik", unit] if unit else [])
+
         kayit = kayit_olustur(
             gorev.url, baslik, breadcrumb, unit, tip, metin,
             published_at=extract.tarih_bul(metin, yil_tahmin=tip in ("duyuru", "haber")),
@@ -248,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gecikme", type=float, default=1.0, help="İstekler arası saniye")
     ap.add_argument("--sadece-birim", action="store_true",
                     help="Yalnızca /tr/Birim/ altını gez (tek bölüm çekerken)")
+    ap.add_argument("--birimsiz", action="store_true",
+                    help="/tr/Birim/ altına hiç girme (duyuru/haber/takvim çekerken)")
     ap.add_argument("--sifirdan", action="store_true",
                     help="Mevcut dosyayı okumadan baştan yaz")
     ap.add_argument("--sessiz", action="store_true")
@@ -263,7 +274,8 @@ def main(argv: list[str] | None = None) -> int:
 
     depo = Depo(cikti, devam=not a.sifirdan)
     cekici = Cekici(gecikme=a.gecikme, sessiz=a.sessiz)
-    crawler = Crawler(cekici, depo, a.max_sayfa, a.derinlik, a.sadece_birim)
+    crawler = Crawler(cekici, depo, a.max_sayfa, a.derinlik, a.sadece_birim,
+                      a.birimsiz)
 
     print(f"KTUN crawler — {len(tohumlar)} tohum, derinlik {a.derinlik}, "
           f"en fazla {a.max_sayfa} sayfa, {a.gecikme}s gecikme")
