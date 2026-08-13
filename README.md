@@ -265,9 +265,34 @@ IDF vermesi: korpus büyüdükçe alakasız sorgu da bir belgeye çarpıyor ("ha
 cinsten** bir sinyale ihtiyacı var; aday yönler: sorgunun birim/alan terimleriyle
 örtüşmesi, sorgu sınıflandırma, ya da top-1 ile korpus ortalaması arasındaki fark.
 
-Denenen ve **işe yaramayan** bir yol (A tarafı): duyuru/haber liste sayfalarını
-indeksten çıkarmak. Sızıntıyı değiştirmedi ve arama isabetini düşürdü — bazı
-testler zaten liste sayfasına eşleşerek geçiyordu.
+**Sızıntının arkasında güvenlik ağı yok.** Sızan soru modele gidince cevap
+öngörülemez oluyor: bir çalıştırmada "Bu konuda elimde bilgi yok" (istenen
+davranış), diğerinde sistem talimatının kendisi tekrarlandı — *"SORUN CEVABINI
+BAĞLAMDAN BULUP YAZMAK."* 2B model, alakasız bağlamla karşılaşınca en kolay
+token yolunu seçiyor (aynı sınıf sorun: tuzak #3). Yani kapı gerçekten kapanmalı.
+
+### Denenen ve işe yaramayan yollar
+
+Beş yol ölçüldü, beşi de ayırmadı. Hepsi 18 kapsam içi / 6 kapsam dışı soruyla:
+
+| Aday sinyal | Fikir | Sonuç |
+|---|---|---|
+| Eşik yükseltme | Kosinüs eşiğini kapsam içi tabanına çek | İki küme arası pay **0.001** — teste ezberletmek olur |
+| Sorgu kapsaması | Sorgu kelimelerinin ilk 4 sonuçta geçme oranı | içi min **0.50**, dışı max **1.00** ("hava durumu"nun üç kelimesi de korpusta geçiyor) |
+| Sonuç tutarlılığı | Kapsam içi soruda ilk 4 sonuç aynı konudan gelir | içi ortalama **0.893**, dışı ortalama **0.893** — hiç fark yok |
+| Başlık sözlüğü | Sorgu, korpusun küratörlü başlık kelimeleriyle örtüşsün | Gövde çekimleri başlıkla eşleşmiyor; kapsam içi sorular da 0.00 alıyor |
+| Tek kelime eşleşmesi | Alakasız soru tek rastgele kelimeyle çarpıyordur | içi min **0**, dışı max **1** — eş anlamlı genişletme yüzünden ters yönde |
+| Liste sayfalarını atmak (A tarafı) | Duyuru/haber listeleri gürültü üretiyor | Sızıntı değişmedi, arama isabeti düştü |
+
+Ortak sebep: **6 kapsam dışı soru bir kapı tasarlamak için az.** "hava durumu"
+gibi kelimeleri korpusta gerçekten geçen bir soruyla, "bitcoin" gibi hiç
+geçmeyen bir soru aynı kümede; altı örnek bu farkı modellemeye yetmiyor ve her
+eşik denemesi bu altı soruya ezberleme riski taşıyor.
+
+**Sıradaki adım** (bu projede yapılmadı): önce kapsam dışı kümeyi 30-50 soruya
+çıkarmak — üniversite sitesinde geçen kelimeleri içeren ama alakasız sorular
+ağırlıklı. Ancak ondan sonra kapının üçüncü sinyali (küçük bir sınıflandırıcı
+ya da alan sözlüğü) dürüstçe tasarlanıp ölçülebilir.
 
 **Cevap** (`eval/answer_test.py`):
 
