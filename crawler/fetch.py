@@ -77,7 +77,16 @@ class Cekici:
             print(mesaj)
 
     def get(self, url: str) -> Cevap | None:
-        """Tek kaynağı çeker. URL'e DOKUNMAZ (tuzak #1).
+        """Tek kaynağı çeker. URL'e DOKUNMAZ (tuzak #1)."""
+        return self._iste("GET", url)
+
+    def post(self, url: str, veri: dict) -> Cevap | None:
+        """AJAX ucu çeker. Kişi sayfasının sekmeleri sadece POST'a cevap verir
+        (`Sayfa_Getir` -> /tr/Universite/<sekme>), GET boş sayfa döndürür."""
+        return self._iste("POST", url, veri)
+
+    def _iste(self, yontem: str, url: str, veri: dict | None = None) -> Cevap | None:
+        """Hız sınırı + tekrar deneme; get/post ortak gövdesi.
 
         5xx ve bağlantı hatalarında tekrar dener; 4xx'te denemez (tekrar
         denemek aynı 404'ü getirir, sadece sunucuyu meşgul eder).
@@ -86,7 +95,8 @@ class Cekici:
             self._bekle()
             self.sayac["istek"] += 1
             try:
-                r = self.oturum.get(url, timeout=self.zaman_asimi)
+                r = self.oturum.request(yontem, url, data=veri,
+                                        timeout=self.zaman_asimi)
                 self.son_istek = time.monotonic()
             except requests.RequestException as e:
                 self.son_istek = time.monotonic()

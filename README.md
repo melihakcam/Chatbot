@@ -11,12 +11,16 @@ Hedef soru tipleri: **kişi/iletişim** · **tarih/takvim** · **ders/program** 
 
 Bot tüm üniversiteye değil, tek bölüme cevap veriyor. Sebep pratik: 31 bölümün tamamı
 binlerce sayfa demek, ve arama havuzu büyüdükçe "hangi bölümün sınav takvimi" ayrımı
-zorlaşıp yanlış bölümün cevabı dönüyor. Tek bölümde 59 kayıt, hepsi aynı birime ait —
+zorlaşıp yanlış bölümün cevabı dönüyor. Tek bölümde 67 kayıt, hepsi aynı birime ait —
 `unit` alanına bakarak eleme yapmak gerekmiyor.
 
-Çekilen 59 kaydın dağılımı: **41 PDF** (öğretim planı, 4 dönem ders programı, 10 sınav
-takvimi, staj belgeleri, kalite/süreç dosyaları) · 11 sayfa · 4 tablo (AKTS ders listeleri) ·
-2 duyuru · 1 personel listesi.
+Çekilen 67 kaydın dağılımı: **41 PDF** (öğretim planı, 4 dönem ders programı, 10 sınav
+takvimi, staj belgeleri, kalite/süreç dosyaları) · 11 sayfa · 9 personel (8 hoca + liste) ·
+4 tablo (AKTS ders listeleri) · 2 duyuru.
+
+Hocaların akademik geçmişi ve verdiği dersler kişi sayfalarının AJAX sekmelerinden geliyor;
+bir hoca = bir kayıt (sekmeler ayrı kayıt olsaydı hepsi aynı URL'e düşerdi). Yayın listeleri
+(makale, kitap, bildiri) bilerek toplanmıyor — hedef soru tipleri kişi/ders odaklı.
 
 > Bölümün "Öğretim Planı", "Ders Programı", "Sınav Programları" sayfalarının **metni
 > neredeyse boştur** — sadece PDF linkleri taşırlar. Asıl içerik `/Dosyalar/**.pdf`
@@ -103,7 +107,8 @@ Selenium **gerekmiyor**. `robots.txt` ve `sitemap.xml` **yok** → ana sayfadan 
 | `brm` id | **Sayfa başına**, birim başına değil → URL'ler tahmin edilemez, menüden keşfedilir |
 | Akademik takvim | Sayfa metninde yok, **`<iframe>` içindeki PDF**'te (metin tabanlı, OCR gerekmez) |
 | Ders listesi | Sayfa boş görünür; asıl liste `GET /tr/Birim/BolumDersListesiGetir?id=<id>` ucunda. id `onclick="derslistegetir(5018)"` içinde |
-| Hoca iletişimi | Kişi sayfası sekmeleri AJAX. Kaynak: `/tr/Universite/TelefonRehberiBirimDetay` |
+| Hoca sayfası | Sekmeler AJAX: `POST /tr/Universite/<sekme>` + `id=<token>`, token `onclick="Sayfa_Getir(...)"` içinde. Sayfanın kendi metni sadece ad + fakülte + bölüm (261 chr). Hoca adı `<h6>`'da — h1/h2 herkeste "Akademik Personel" |
+| Telefon rehberi | `TelefonRehberiAramaDetay` / `TelefonRehberiBirimDetay` uçları **boş tablo dönüyor**; rehberde veri yok. Telefon/e-posta bu yüzden toplanamıyor |
 | Duyuru başlığı | Sayfada **iki `<h1>`** var; ilki jenerik ("Duyuru Detay"), ikincisi gerçek başlık |
 
 ### 🔴 Sessizce bozan iki tuzak

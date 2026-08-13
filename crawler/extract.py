@@ -25,7 +25,11 @@ from bs4 import BeautifulSoup
 # ayrı olarak (temizlikten önce) topluyoruz.
 GURULTU_SECICILER = (
     "script, style, noscript, svg, "
-    ".gdlr-core-pbf-sidebar-left, .gdlr-core-pbf-sidebar-right, .kingster-sidebar-area"
+    ".gdlr-core-pbf-sidebar-left, .gdlr-core-pbf-sidebar-right, .kingster-sidebar-area, "
+    # Kişi sayfasının sekme butonları ("Kitaplar", "Patentler"…). İçerikleri
+    # ayrı uçlardan geliyor; başlıkları metinde kalırsa her hoca birbirinin
+    # aynısı görünür.
+    "button.kontrol"
 )
 
 JENERIK_BASLIKLAR = {"duyuru detay", "haber detay", "anasayfa", "detay", ""}
@@ -45,6 +49,10 @@ YILSIZ_PENCERE = 300
 
 # Ders listesi sayfa metninde değil; program id'si onclick içinde saklı.
 DERS_PROGRAM_RE = re.compile(r"derslistegetir\((\d+)\)")
+
+# Kişi sayfasının sekmeleri de metinde değil: onclick="Sayfa_Getir('X','<token>')".
+# Token kişi başına sabit, sekmeye göre değişmez.
+PERSONEL_TOKEN_RE = re.compile(r"Sayfa_Getir\('[^']+','([^']+)'\)")
 
 
 def coz(html: str) -> BeautifulSoup:
@@ -221,3 +229,19 @@ def iframe_pdfleri(soup: BeautifulSoup, taban: str) -> list[str]:
 def ders_program_idleri(html: str) -> list[str]:
     """onclick="derslistegetir(5018)" içindeki program id'leri, sırası bozulmadan."""
     return list(dict.fromkeys(DERS_PROGRAM_RE.findall(html)))
+
+
+def kisi_adi(soup: BeautifulSoup) -> str:
+    """Kişi sayfasındaki hoca adı. <h6> içinde — sayfanın h1/h2'si herkeste
+    aynı ("Akademik Personel"), o yüzden baslik_bul burada işe yaramaz."""
+    main = ana_govde(soup)
+    if main is None:
+        return ""
+    h6 = main.find("h6")
+    return h6.get_text(" ", strip=True) if h6 else ""
+
+
+def personel_token(html: str) -> str | None:
+    """Kişi sayfasının sekme token'ı. Yoksa None (kişi sayfası değil)."""
+    m = PERSONEL_TOKEN_RE.search(html)
+    return m.group(1) if m else None

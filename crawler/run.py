@@ -29,6 +29,21 @@ from crawler.store import Depo, kayit_olustur
 
 DERS_LISTESI_UCU = BASE + "/tr/Birim/BolumDersListesiGetir"
 
+KISI_YOLU = "/tr/Universite/PersonelBilgi"
+
+# Kişi sayfasında toplanan sekmeler. Hepsi POST /tr/Universite/<sekme>.
+# Yayın listeleri (Makaleler, Kitaplar, Bildiriler…) bilerek dışarıda:
+# hedef soru tipleri kişi/ders odaklı, yayın listesi kaydı onlarca kat
+# büyütüp aramayı sulandırıyor.
+KISI_SEKMELERI = (
+    ("KisiselBilgiler", "Akademik Görevler ve Öğrenim Bilgisi"),
+    ("DersListesi", "Verdiği Dersler"),
+)
+
+
+def kisi_sayfasi_mi(url: str) -> bool:
+    return KISI_YOLU.lower() in url.lower()
+
 TUM_SITE_TOHUMLARI = [
     BASE + "/",
     BASE + "/tr/Universite/Tanitim",
@@ -71,10 +86,12 @@ class Crawler:
         anahtar = scope.anahtar(gorev.url)
         if anahtar in self.gorulen or not scope.kapsamda_mi(gorev.url):
             return False
-        # PDF muaf: ders/sınav programı, öğretim planı ve staj belgeleri
-        # /Dosyalar/ altında duruyor ama içerikleri bölümün ta kendisi.
+        # İki muafiyet — ikisi de /tr/Birim/ dışında durur ama içerikleri
+        # bölümün ta kendisidir:
+        #   · PDF     : ders/sınav programı, öğretim planı, staj belgeleri
+        #   · kişi     : hocaların /tr/Universite/PersonelBilgi/ sayfaları
         if self.sadece_birim and "/tr/Birim/" not in gorev.url \
-                and not scope.pdf_mi(gorev.url):
+                and not scope.pdf_mi(gorev.url) and not kisi_sayfasi_mi(gorev.url):
             return False
         self.gorulen.add(anahtar)
         self.kuyruk.append(gorev)
@@ -109,6 +126,9 @@ class Crawler:
 
         sayfa_basligi = extract.baslik_bul(soup)
         metin = extract.metin_cikar(soup)
+
+        if kisi_sayfasi_mi(gorev.url):
+            sayfa_basligi, metin = self.kisi_sayfasi(soup, html, metin)
 
         # Birim sayfalarında h1 her zaman birimin adını verir, hangi alt sayfada
         # olduğumuzu değil. Bu yüzden h1 -> unit, menü adı -> başlık.
@@ -155,6 +175,30 @@ class Crawler:
             gorev.url, f"{ad} (PDF)", gorev.breadcrumb, gorev.unit, "pdf", metin,
         )
         self.rapor(self.depo.ekle(kayit), f"{ad} (PDF)", "pdf", len(metin))
+
+    def kisi_sayfasi(self, soup, html: str, metin: str) -> tuple[str, str]:
+        """Hocanın sekmelerini toplayıp tek metne katar.
+
+        Kişi sayfasının kendi metni sadece ad + fakülte + bölüm; akademik
+        geçmiş ve verdiği dersler POST uçlarından geliyor (`Sayfa_Getir`).
+        Her sekme ayrı kayıt olsaydı URL'leri aynı olurdu — POST'un kendi
+        adresi yok — ve depo hepsini tek satıra ezerdi. Bu yüzden bir hoca =
+        bir kayıt: kaynak linki de gerçekten açılabilen kişi sayfası oluyor.
+        """
+        token = extract.personel_token(html)
+        if not token:
+            return extract.kisi_adi(soup) or "", metin
+
+        parcalar = [metin]
+        for sekme, baslik in KISI_SEKMELERI:
+            cevap = self.cekici.post(f"{BASE}/tr/Universite/{sekme}", {"id": token})
+            if cevap is None or not cevap.html_mi:
+                continue
+            govde = extract.metin_cikar(extract.coz(cevap.html)).strip()
+            if govde:
+                parcalar.append(f"{baslik}\n{govde}")
+
+        return extract.kisi_adi(soup) or "", "\n\n".join(parcalar)
 
     def ders_listesi(self, program_id: str, unit: str | None, breadcrumb: list[str]) -> None:
         """Ders listesi sayfa metninde YOK, AJAX ucunda.
