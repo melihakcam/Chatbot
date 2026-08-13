@@ -31,19 +31,54 @@ bir hoca = bir kayıt (sekmeler ayrı kayıt olsaydı hepsi aynı URL'e düşerd
 
 ## Nasıl çalışıyor?
 
-```
-ktun.edu.tr ──crawl──> data/raw/pages.jsonl ──parçala+embed──> data/index/
-                                                                    │
-Soru ──> (gerekirse) soruyu tamamla ──> Arama (BM25 + anlamsal) ──> en iyi 4 parça
-                                                                    │
-                                              ┌─────────────────────┴──────────────┐
-                                        skor düşük                            skor yeterli
-                                              │                                    │
-                              "Sadece KTÜN hakkında..."              LLM (≤2B) ──> cevap + kaynak linki
+Sistem iki bağımsız hattan oluşuyor. Soldaki hat **verinin hazırlanması** (elle
+tetiklenir), sağdaki hat **sorunun cevaplanması** (her soruda çalışır).
+
+```mermaid
+flowchart TD
+    subgraph VERI["VERİ HATTI — elle tetiklenir"]
+        SITE[ktun.edu.tr]
+        CRAWL["crawler/run.py<br/>BFS + PDF + AJAX"]
+        RAW[("data/raw/pages.jsonl<br/>67 kayıt")]
+        CHUNK["index/chunk.py<br/>tipe göre parçalama"]
+        IDX[("data/index/<br/>104 parça · embedding · BM25")]
+        SITE --> CRAWL --> RAW --> CHUNK --> IDX
+    end
+
+    subgraph SORU["SORU HATTI — her soruda"]
+        Q([Kullanıcı sorusu])
+        YON{"OBS / LMS /<br/>kütüphane konusu mu?"}
+        REW["bot/rewrite.py<br/>takip sorusunu tamamla"]
+        ARA["bot/retriever.py<br/>BM25 + embedding, RRF"]
+        KAPI{"kapsam içi mi?<br/>BM25 ≥ 3.0 VE kos ≥ 0.82"}
+        EXT{"cevap bir ALAN mı?<br/>telefon / e-posta / ders kodu"}
+        LLM["bot/llm.py<br/>gemma2:2b"]
+        CEVAP([Cevap + kaynak linki])
+        RED([“Sadece KTÜN hakkında<br/>yardımcı olabilirim”])
+        LINK([Doğru adrese yönlendirme])
+
+        Q --> YON
+        YON -- evet --> LINK
+        YON -- hayır --> REW --> ARA --> KAPI
+        KAPI -- hayır --> RED
+        KAPI -- evet --> EXT
+        EXT -- evet --> CEVAP
+        EXT -- hayır --> LLM --> CEVAP
+    end
+
+    IDX -.okur.-> ARA
 ```
 
-Model bilgiyi **ezberlemez**. Bu yüzden veri güncellemek = crawler'ı tekrar çalıştırmak,
-ve 2B'lik küçük bir model yeterli olur (modelden bilgi değil, okuduğunu anlatması isteniyor).
+Üç tasarım kararı bu şemayı belirliyor:
+
+**Model bilgiyi ezberlemez.** Veri güncellemek = crawler'ı tekrar çalıştırmak, saatlerce
+eğitim değil. 2B'lik model yeterli çünkü ondan bilgi değil, **okuduğunu anlatması** isteniyor.
+
+**Kapsam kapısı modelden ÖNCE.** Alakasız soruda model hiç çalışmaz — uydurma şansı bulamaz.
+
+**Yapısal cevaplar modeli atlar.** Telefon, e-posta, ders kredisi gibi bilgiler metinde bir
+alan olarak duruyor; bunları modele yazdırmanın faydası yok. O sorular model kalitesinden
+bağımsız ve anlık.
 
 ---
 
@@ -109,22 +144,27 @@ kayıtlarla birleştirir.
 
 ---
 
-## Bot nasıl cevap veriyor
+## Kapsam kapısı nasıl ayarlandı
 
-Sırayla: **yönlendirme** (OBS/LMS konusuysa arama bile yapılmaz) → **soru tamamlama**
-(takip sorusuna önceki konuyu ekler) → **arama** → **kapsam kapısı** (alakasızsa model
-hiç çağrılmaz) → **yapısal çıkarım** (telefon/e-posta/ders kredisi ise model gerekmez)
-→ **model** → **kaynak linkleri**.
+Alakasız soruda modelin hiç çalışmaması gerekiyor. Bunun için bir eşik lazım, ve
+eşik **tahminle değil ölçümle** kondu. Ölçüm (18 kapsam içi / 6 kapsam dışı soru):
 
-Ölçüm şunu gösterdi: arama isabeti %100 ama hataların tamamı modelin doğru bağlamı
-kullanamamasından geliyordu — telefon numarası bağlamın 1. parçasında apaçık dururken
-model "bilgi yok" diyebiliyordu. Bu yüzden cevabın metinde bir **alan** olarak durduğu
-sorular (`bot/extract.py`) modele hiç gitmiyor: anında cevaplanıyor ve model
-kalitesinden bağımsız.
+| | BM25 | kosinüs |
+|---|---|---|
+| kapsam içi | 3.20 – 20.89 | 0.832 – 0.876 |
+| kapsam dışı | 0.00 – 3.83 | 0.797 – 0.843 |
 
-Kapsam kapısı **BM25 skoruna** bağlı, kosinüse değil. Sebep ölçümle bulundu: e5
-modelinde kapsam içi skorlar 0.817–0.923, kapsam dışı 0.805–0.842 — aralıklar
-çakışıyor, kosinüs tek başına ayıramıyor. Kelime örtüşmesi ayırıyor.
+**İki aralık da çakışıyor** — hiçbir sinyal tek başına ayıramıyor. Ama çakışmalar
+farklı sorulardan geliyor:
+
+- *"aşk şiiri **yaz**"* → BM25 yüksek (staj metinlerindeki "yaz" ile eşleşiyor),
+  kosinüs düşük
+- *"bugün günlerden ne"* → kosinüs yüksek, BM25 sıfır
+
+İkisini **birden** şart koşunca ayırım tam oluyor. Ayrıca çok yüksek kosinüs
+(≥ 0.85) tek başına yeterli sayılıyor: *"Staj yapmak için ne gerekiyor"* BM25'te
+2.35 alıp reddediliyordu, kosinüsü 0.868 — kapsam dışı hiçbir sorunun ulaşamadığı
+seviye.
 
 ---
 
@@ -181,6 +221,22 @@ Hiçbiri hata mesajı vermiyor — sistem çalışıyor görünüp yanlış ceva
 | 8 | Kişi soruları form belgelerine düşüyor | Görev tanımı PDF'leri aynı kelimeleri içeriyor | Belge sınıfı + ceza |
 | 9 | "peki" ile başlayan soru reddediliyor | Bağlaç BM25 ağırlığını sulandırıyor | Takip bağlaçları ayıklanıyor |
 
+Bu tablo projenin en öğretici çıktısı. Ortak noktaları: **hiçbiri çökmüyor, hiçbiri
+log basmıyor.** Sistem sağlıklı görünürken yanlış cevap veriyor. Hepsi ancak ölçüm
+yazıldıktan sonra görülebildi — bu yüzden `eval/` klasörü modelden önce yazıldı.
+
+İki tanesi ayrıca genel ders niteliğinde:
+
+**#6 — RRF'in kör noktası.** Reciprocal Rank Fusion iki sıralamayı toplar. Bir yöntemde
+1., diğerinde 34. olan parça tek katkı alır (1/61) ve *iki yöntemde de vasat* olan
+parçalara (iki katkı) yenilir. Kadro listesi tam olarak bu durumdaydı: BM25'in
+tartışmasız birincisi, sonuçlarda yok. Çözüm her yöntemin birincisine slot ayırmak.
+
+**#3 — Küçük modelde kaçış cümlesi.** Prompt'a "cevap yoksa şunu yaz: ..." diye
+hazır bir cümle koymak, 1.5B modele en kolay token yolunu vermek demek. Model o
+cümleyi kopyalamayı öğreniyor ve bağlamdaki cevabı görmezden geliyordu (doğruluk 1/8).
+Cümle yerine modelin doğal üretmeyeceği bir etiket (`BILGI_YOK`) konunca kısayol kapandı.
+
 ---
 
 ## Kim neyi yazıyor?
@@ -223,16 +279,8 @@ Selenium **gerekmiyor**. `robots.txt` ve `sitemap.xml` **yok** → ana sayfadan 
 | Telefon rehberi | `TelefonRehberiAramaDetay` / `TelefonRehberiBirimDetay` uçları **boş tablo dönüyor**; rehberde veri yok. Telefon/e-posta bu yüzden toplanamıyor |
 | Duyuru başlığı | Sayfada **iki `<h1>`** var; ilki jenerik ("Duyuru Detay"), ikincisi gerçek başlık |
 
-### 🔴 Sessizce bozan iki tuzak
-
-1. **URL'ler yeniden encode edilmez.** `brm`/`prsnl` Base64'tür, içinde `+` ve `=` geçer.
-   `+` query string'de boşluğa döner ve sayfa bulunamaz. Sadece `html.unescape()` uygulanır.
-
-2. **`.lower()` Türkçe'yi bozar.** `"İ".lower()` → `i` + **ayrı** birleşen nokta (U+0307);
-   `"I".lower()` → `i` (Türkçe'de `ı` olmalı). Sonuç: *"bilgisayar"* araması *"BİLGİSAYAR"*
-   ile **eşleşmez** — hata vermez, sadece yanlış cevap verir.
-   Çözüm: `common/normalize.py` → `normalize_tr()`. İndeksleme ve sorgu **aynı** fonksiyonu
-   kullanmak zorunda.
+Bu tabloyla ilgili iki kritik kural yukarıdaki [tuzaklar tablosunda](#ölçümle-bulunan-tuzaklar)
+detaylı: URL'ler yeniden encode edilmez (#2) ve `.lower()` Türkçe'de kullanılmaz (#1).
 
 ---
 
