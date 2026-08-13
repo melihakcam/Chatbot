@@ -5,8 +5,13 @@ AKIŞ (sırası önemli):
     2. Sorgu yeniden yazma   -> takip sorusuysa geçmişle tamamlanır
     3. Arama                 -> BM25 + embedding
     4. Kapsam kapısı         -> alakasızsa LLM HİÇ çağrılmaz
-    5. LLM                   -> sadece bulunan bağlamla cevap yazar
-    6. Kaynak ekleme         -> cevabın altına kullanılan sayfa linkleri
+    5. Yapısal çıkarım       -> telefon/e-posta/ders kredisi ise LLM'e GEREK YOK
+    6. LLM                   -> sadece serbest sorularda, bulunan bağlamla
+    7. Kaynak ekleme         -> cevabın altına kullanılan sayfa linkleri
+
+5. adım modele olan bağımlılığı azaltır: ölçümde arama %100 isabetliydi ama
+model doğru bağlamı kullanamıyordu. Cevabın metinde bir ALAN olarak durduğu
+sorularda modele yaratıcılık payı bırakmanın faydası yok.
 
 Cevaplanamayan sorular data/logs/unanswered.jsonl'e yazılır — hangi konularda
 veri eksik olduğunu gösterir (crawler'a geri besleme).
@@ -20,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common.paths import LOGS_DIR
+from bot.extract import dogrudan_cevap
 from bot.llm import LLMHatasi, backend_olustur
 from bot.prompt import (
     BILGI_YOK_CEVABI, BILGI_YOK_ETIKETI, KAPSAM_DISI_CEVABI, SISTEM_PROMPTU, prompt_kur,
@@ -43,6 +49,7 @@ class Cevap:
     kaynaklar: list[Sonuc] = field(default_factory=list)
     kapsam_disi: bool = False
     yonlendirme: bool = False
+    dogrudan: bool = False          # LLM calistirilmadan cevaplandi
     kullanilan_soru: str = ""
 
     def tam_metin(self) -> str:
@@ -91,7 +98,16 @@ class Chatbot:
             self.gecmis.append((soru, cevap.metin))
             return cevap
 
-        # 5. LLM — kurallar system mesajinda, baglam+soru user mesajinda.
+        # 5. Yapisal cikarim — cevap metinde bir ALAN olarak duruyorsa modeli atla.
+        dogrudan = dogrudan_cevap(arama_sorusu, sonuclar)
+        if dogrudan:
+            metin, kaynak = dogrudan
+            cevap = Cevap(metin=metin, kaynaklar=[kaynak], dogrudan=True,
+                          kullanilan_soru=arama_sorusu)
+            self.gecmis.append((soru, cevap.metin))
+            return cevap
+
+        # 6. LLM — kurallar system mesajinda, baglam+soru user mesajinda.
         try:
             metin = self.backend.generate(
                 prompt_kur(arama_sorusu, sonuclar), sistem=SISTEM_PROMPTU
