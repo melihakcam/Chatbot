@@ -33,8 +33,13 @@ KURULUM = r"""
 
 import os, sys, glob, zipfile
 
-def proje_kokunu_bul(basla="/content", derinlik=3):
+ATLA = {"sample_data", "__pycache__", ".git", ".config", ".ipynb_checkpoints"}
+
+
+# bot/ index/ common/ klasorlerini BIRLIKTE iceren dizini bulur.
+def proje_kokunu_bul(basla="/content", derinlik=4):
     for kok, klasorler, _ in os.walk(basla):
+        klasorler[:] = [d for d in klasorler if d not in ATLA]
         if kok.count(os.sep) - basla.count(os.sep) > derinlik:
             klasorler[:] = []
             continue
@@ -42,22 +47,25 @@ def proje_kokunu_bul(basla="/content", derinlik=3):
             return kok
     return None
 
+
 KOK = proje_kokunu_bul()
 
-# Bulunamadiysa: ortada zip varsa ac, tekrar ara.
+# Klasor yerine zip atilmissa: ac, tekrar ara.
 if KOK is None:
     for z_yol in glob.glob("/content/**/*.zip", recursive=True):
         with zipfile.ZipFile(z_yol) as z:
             z.extractall("/content/ktun")
-        print(f"Acildi: {z_yol}")
+        print(f"Zip acildi: {z_yol}")
     KOK = proje_kokunu_bul()
 
 if KOK is None:
+    print("Proje bulunamadi. /content icinde su anda sunlar var:")
+    for ad in sorted(os.listdir("/content")):
+        print("   ", ad)
     raise SystemExit(
-        "Proje bulunamadi.\n"
-        "  Soldaki KLASOR simgesine tiklayip proje klasorunu (veya zip'ini)\n"
-        "  /content icine yukle, sonra bu hucreyi tekrar calistir.\n"
-        "  Gereken klasorler: bot/ index/ common/ eval/ data/sample/"
+        "\nSoldaki klasor simgesine tiklayip ktunChatbot klasorunu surukle,\n"
+        "sonra bu hucreyi tekrar calistir.\n"
+        "Gereken klasorler: bot/ index/ common/ eval/ data/sample/"
     )
 
 os.chdir(KOK)

@@ -56,13 +56,9 @@ def main() -> int:
         markdown_hucre(BASLIK),
         markdown_hucre(
             "## 1. Kurulum\n\n"
-            "**Önce proje dosyalarını yükle:** soldaki klasör simgesine tıkla, "
-            "proje klasörünü (veya zip'ini) `/content` içine sürükle. "
+            "**Soldaki klasör simgesine tıkla, `ktunChatbot` klasörünü sürükle.**\n"
             "Sonra bu hücreyi çalıştır.\n\n"
-            "Hücre proje kökünü kendisi bulur — zip, klasör ya da doğrudan atılmış "
-            "dosyalar, hepsi çalışır. Repo private olduğu için Colab klonlayamıyor.\n\n"
-            "Gereken klasörler: `bot/ index/ common/ eval/ data/sample/` "
-            "(model ağırlıkları ve indeks gerekmez, Colab kendisi üretir)."
+            "Hücre klasörü nereye düştüyse kendisi bulur; yolu senin ayarlaman gerekmiyor."
         ),
         kod_hucre(KURULUM),
         markdown_hucre("## 2. İndeks\n"
