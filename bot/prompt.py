@@ -46,6 +46,22 @@ KAPSAM_DISI_CEVABI = (
     "bilgileri hakkında soru sorabilirsin."
 )
 
+# Kapsam kapısı iki farklı durumu ayıramıyordu ve ikisine de yukarıdaki cevabı
+# veriyordu: (a) soru gerçekten alakasız ("makarna tarifi ver"), (b) soru
+# okulla ilgili ama aranan şey kayıtlarda yok (indekste olmayan bir asistanın
+# adı). (b)'ye "sadece KTÜN hakkında yardımcı olabilirim" demek kullanıcıya
+# sorusunu yanlış sormuş hissi veriyor — oysa kusur veri kapsamında.
+#
+# Ayrım sorunun ÖZEL AD içerip içermediğine bakarak yapılıyor: kişi soruları
+# neredeyse her zaman bir ada dayanıyor ve alakasız sorular ("bitcoin fiyatı
+# kaç") ad içermiyor.
+KAYITTA_YOK_CEVABI = (
+    "Bu ismi kayıtlarımda bulamadım. Verilerim Bilgisayar ve Bilişim Bilimleri "
+    "Fakültesi'nin üç bölümüyle sınırlı (Bilgisayar, Yazılım, Yapay Zeka ve "
+    "Makine Öğrenmesi Mühendisliği); aradığın kişi başka bir birimdeyse ya da "
+    "sayfası taranmamışsa göremiyorum. ktun.edu.tr üzerinden kontrol edebilirsin."
+)
+
 BILGI_YOK_CEVABI = (
     "Bu konuda elimde bilgi yok, ktun.edu.tr üzerinden kontrol edebilirsin."
 )

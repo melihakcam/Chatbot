@@ -18,6 +18,7 @@ veri eksik olduğunu gösterir (crawler'a geri besleme).
 """
 
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,7 +29,8 @@ from common.paths import LOGS_DIR
 from bot.extract import dogrudan_cevap
 from bot.llm import LLMHatasi, backend_olustur
 from bot.prompt import (
-    BILGI_YOK_CEVABI, BILGI_YOK_ETIKETI, KAPSAM_DISI_CEVABI, SISTEM_PROMPTU, prompt_kur,
+    BILGI_YOK_CEVABI, BILGI_YOK_ETIKETI, KAPSAM_DISI_CEVABI, KAYITTA_YOK_CEVABI,
+    SISTEM_PROMPTU, prompt_kur,
 )
 from bot.redirects import yonlendirme_bul
 from bot.retriever import Retriever, Sonuc
@@ -65,6 +67,29 @@ class Cevap:
         return self.metin + "\n\nKaynak:\n" + "\n".join(linkler)
 
 
+# Türkçe soru kelimeleri ve cümle başı büyük harf yanıltmasın: iki ya da daha
+# fazla ard arda büyük harfle başlayan kelime = büyük olasılıkla bir ad soyad.
+# "beyza kızıldağ kimdir" gibi küçük harfle yazılmış sorular için de ikinci yol
+# var: bilinen soru kalıbı ("... kimdir", "... kim").
+_ADAY_AD = re.compile(r"\b[A-ZÇĞİÖŞÜ][a-zçğıöşü]+\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+")
+_KIM_KALIBI = re.compile(r"\b(kimdir|kim)\b", re.IGNORECASE)
+_SORU_KELIMELERI = {"kim", "kimdir", "kimler", "nedir", "ne", "nasil", "nasıl",
+                    "nerede", "hangi", "kac", "kaç", "zaman", "bolum", "bölüm"}
+
+
+def ozel_ad_var_mi(soru: str) -> bool:
+    """Soru bir kişi adı içeriyor gibi mi görünüyor?"""
+    if _ADAY_AD.search(soru):
+        return True
+    if not _KIM_KALIBI.search(soru):
+        return False
+    # "kim/kimdir" var: soru kelimeleri dışında en az iki kelime kalıyorsa
+    # (ad + soyad) kişi sorusu sayılıyor. "bölüm başkanı kim" elenir.
+    kalan = [k for k in re.findall(r"\w+", soru.casefold())
+             if k not in _SORU_KELIMELERI]
+    return len(kalan) >= 2
+
+
 class Chatbot:
     def __init__(self, backend_adi: str = "ollama", model: str | None = None):
         self.retriever = Retriever()
@@ -92,9 +117,14 @@ class Chatbot:
 
         # 4. Kapsam kapısı — LLM buradan sonra çağrılır.
         if self.retriever.kapsam_disi_mi(sonuclar):
-            self._logla(soru, arama_sorusu, "kapsam_disi")
-            cevap = Cevap(metin=KAPSAM_DISI_CEVABI, kapsam_disi=True,
-                          kullanilan_soru=arama_sorusu)
+            # Soru bir KİŞİ hakkındaysa mesaj değişiyor: "sadece KTÜN hakkında
+            # yardımcı olabilirim" demek yanlış bilgi veriyor, çünkü soru
+            # okulla ilgili — bulunamayan şey kişinin kaydı.
+            kisi_sorusu = ozel_ad_var_mi(soru)
+            self._logla(soru, arama_sorusu,
+                        "kayitta_yok" if kisi_sorusu else "kapsam_disi")
+            cevap = Cevap(metin=KAYITTA_YOK_CEVABI if kisi_sorusu else KAPSAM_DISI_CEVABI,
+                          kapsam_disi=True, kullanilan_soru=arama_sorusu)
             self.gecmis.append((soru, cevap.metin))
             return cevap
 
