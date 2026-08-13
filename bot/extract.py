@@ -139,13 +139,44 @@ def kisi_satiri_cikar(metin: str, ad_parcalari: list[str]) -> str | None:
 def _ad_parcalari(soru: str) -> list[str]:
     """Sorudan ad adayı kelimeleri ayıklar (soru kelimeleri atılır)."""
     atilacak = {"kim", "kimdir", "kimler", "nedir", "ne", "hangi", "bolum",
-                "bolumu", "hoca", "hocasi", "unvani", "unvan", "gorevi",
-                "calisiyor", "veriyor", "dersleri", "ders", "mi", "midir"}
+                "bolumu", "bolumde", "hoca", "hocasi", "unvani", "unvan",
+                "gorevi", "gorevli", "calisiyor", "calisir", "nerede", "kisi",
+                "veriyor", "dersleri", "ders", "mi", "midir", "adli", "isimli"}
     return [k for k in re.findall(r"\w+", soru)
             if len(k) > 2 and normalize_tr(k) not in atilacak]
 
 
-def dogrudan_cevap(soru: str, sonuclar) -> tuple[str, object] | None:
+# Kişinin KİMLİĞİNİ soran kalıplar. Ders/telefon soruları bilerek DIŞARIDA:
+# "X hangi dersleri veriyor" sorusunun cevabı unvan değil ders listesi, o soru
+# modele gitmeli.
+#
+# NEDEN KALIP LİSTESİ: Önce yalnızca "kim/kimdir" tetikliyordu. Kullanıcı
+# "Bilgisayar Mühendisliğinde bir hoca soruyorum, Yapay Zeka'da görevli diyor"
+# diye bildirdi: "X hangi bölümde" gibi sorular modele düşüyordu ve 2B model
+# bağlamdaki üç bölümün arasından yanlışını seçebiliyordu. Kimlik sorusunun
+# cevabı kadro satırında yazılı; model bu işe hiç karışmamalı.
+KIMLIK_KALIPLARI = ("kimdir", "kim", "hangi bolum", "hangi bolumde",
+                    "nerede calis", "unvani", "gorevi ne", "hangi birim")
+
+
+# Kimlik dalından MUAF konular: cevabı unvan değil, başka bir alan.
+# "X hangi dersleri veriyor" -> ders listesi, "X'in telefonu" -> numara.
+BASKA_ALAN = ("ders", "telefon", "mail", "posta", "numara", "adres")
+
+
+def _baska_alan_sorusu(soru: str) -> bool:
+    norm = normalize_tr(soru)
+    return any(k in norm for k in BASKA_ALAN)
+
+
+def _kimlik_sorusu_mu(soru: str) -> bool:
+    if _baska_alan_sorusu(soru):
+        return False
+    norm = normalize_tr(soru)
+    return any(normalize_tr(k) in norm for k in KIMLIK_KALIPLARI)
+
+
+def dogrudan_cevap(soru: str, sonuclar, kimlik: bool = False) -> tuple[str, object] | None:
     """Soru yapısal olarak cevaplanabiliyorsa (cevap, kaynak) döndürür.
 
     Cevap bulunamazsa None -> normal LLM akisi devreye girer.
@@ -153,15 +184,42 @@ def dogrudan_cevap(soru: str, sonuclar) -> tuple[str, object] | None:
     if not sonuclar:
         return None
 
-    # --- Kişi sorusu: "X kimdir", "X kim" ---
-    if re.search(r"\b(kimdir|kim)\b", soru, re.IGNORECASE):
+    # --- Kişi kimliği: "X kimdir", "X hangi bölümde", "X'in unvanı ne" ---
+    # kimlik=True: çağıran taraf sorunun kadrodaki bir adı içerdiğini zaten
+    # doğruladı. Çıplak ad ("aybüke babadağ") hiçbir kalıba uymuyor ama
+    # cevabı yine kadro satırı — modele gidince unvan uyduruluyordu.
+    if (kimlik and not _baska_alan_sorusu(soru)) or _kimlik_sorusu_mu(soru):
         parcalar = _ad_parcalari(soru)
         if len(parcalar) >= 2:                       # ad + soyad
-            for s in sonuclar:
+            # Kaynak önceliği: kişinin KENDİ sayfası ve bölümünün kadro listesi
+            # önce gelsin. Sitede eski "Akademik Danışman" listeleri var ve
+            # oralarda unvanlar güncellenmemiş (İsmail KOÇ orada hâlâ
+            # "Dr. Öğr. Üyesi", kadro listesinde "Doç. Dr.").
+            def oncelik(s):
+                baslik = normalize_tr(s.title)
+                kendi_sayfasi = all(normalize_tr(p) in baslik for p in parcalar)
+                kadro = "akademik personel" in baslik
+                return (0 if kendi_sayfasi else 1 if kadro else 2)
+
+            sirali = sorted(sonuclar, key=oncelik)
+            for s in sirali:
                 satir = kisi_satiri_cikar(s.text, parcalar)
                 if satir:
                     birim = s.unit or "KTÜN"
                     return f"{satir} — {birim} akademik kadrosunda.", s
+
+            # İkinci yol: kişinin KENDİ sayfası. Başlık zaten "<birim> — <unvan>
+            # <ad>" biçiminde, yani unvan orada bir alan gibi duruyor. Kadro
+            # listesi sonuçlara girmediğinde (ölçümde 65 kişiden 3'ü) bu yol
+            # devreye giriyor ve soru yine modele gitmiyor.
+            for s in sirali:
+                baslik = normalize_tr(s.title)
+                if not all(normalize_tr(p) in baslik for p in parcalar):
+                    continue
+                for unvan in UNVANLAR:
+                    if normalize_tr(unvan) in baslik:
+                        ad = s.title.split("—")[-1].strip()
+                        return f"{ad} — {s.unit or 'KTÜN'} akademik kadrosunda.", s
 
     # --- Ders kodu sorusu: "YAZ102 kaç kredi", "BBF101 dersinin adı ne" ---
     kod_eslesme = _DERS_KODU.search(soru)

@@ -25,8 +25,9 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common.normalize import tokenize_tr
 from common.paths import LOGS_DIR
-from bot.extract import dogrudan_cevap
+from bot.extract import _kimlik_sorusu_mu, dogrudan_cevap
 from bot.llm import LLMHatasi, backend_olustur
 from bot.prompt import (
     BILGI_YOK_CEVABI, BILGI_YOK_ETIKETI, KAPSAM_DISI_CEVABI, KAYITTA_YOK_CEVABI,
@@ -67,6 +68,9 @@ class Cevap:
         return self.metin + "\n\nKaynak:\n" + "\n".join(linkler)
 
 
+# Kimlik sorularında aranan aday sayısı (normalde 4). Bkz. Chatbot.sor.
+KIMLIK_ADAY_SAYISI = 10
+
 # Türkçe soru kelimeleri ve cümle başı büyük harf yanıltmasın: iki ya da daha
 # fazla ard arda büyük harfle başlayan kelime = büyük olasılıkla bir ad soyad.
 # "beyza kızıldağ kimdir" gibi küçük harfle yazılmış sorular için de ikinci yol
@@ -75,6 +79,44 @@ _ADAY_AD = re.compile(r"\b[A-ZÇĞİÖŞÜ][a-zçğıöşü]+\s+[A-ZÇĞİÖŞÜ
 _KIM_KALIBI = re.compile(r"\b(kimdir|kim)\b", re.IGNORECASE)
 _SORU_KELIMELERI = {"kim", "kimdir", "kimler", "nedir", "ne", "nasil", "nasıl",
                     "nerede", "hangi", "kac", "kaç", "zaman", "bolum", "bölüm"}
+
+
+def _kadro_adlari(parcalar: list[dict]) -> list[frozenset[str]]:
+    """İndeksteki personel kayıtlarından ad kelime kümeleri çıkarır.
+
+    Kaynak iki yer: kadro listesi satırları ("Doç. Dr. Hakan YILMAZ") ve
+    kişilerin kendi sayfa başlıkları ("<birim> — Arş. Gör. Beyza KIZILDAĞ").
+    """
+    from bot.extract import UNVANLAR
+
+    unvan_kelimeleri = {k for u in UNVANLAR for k in tokenize_tr(u)}
+    adlar: set[frozenset[str]] = set()
+
+    def ekle(satir: str) -> None:
+        for unvan in UNVANLAR:
+            if unvan not in satir:
+                continue
+            kalan = satir.split(unvan, 1)[1]
+            kelimeler = {k for k in tokenize_tr(kalan) if k not in unvan_kelimeleri}
+            if len(kelimeler) >= 2:
+                adlar.add(frozenset(kelimeler))
+            return
+
+    for p in parcalar:
+        if p.get("doc_type") != "personel":
+            continue
+        ekle(p.get("title", ""))
+        for satir in re.split(r"[|\n]", p.get("text", "")):
+            satir = satir.strip()
+            if satir and len(satir) < 60:
+                ekle(satir)
+    return sorted(adlar, key=len, reverse=True)
+
+
+def kadroda_ad_var_mi(soru: str, kadro: list[frozenset[str]]) -> bool:
+    """Soru, kadrodaki bir kişinin adının TAMAMINI içeriyor mu?"""
+    kelimeler = set(tokenize_tr(soru))
+    return any(ad <= kelimeler for ad in kadro)
 
 
 def ozel_ad_var_mi(soru: str) -> bool:
@@ -100,22 +142,64 @@ class Chatbot:
         self.birimler = sorted(
             {p["unit"] for p in self.retriever.chunks if p.get("unit")}
         )
+        # Kadroda geçen adların kelime kümeleri. Kişi sorusu tespiti TAHMİNE
+        # değil bu listeye dayanıyor: büyük harf/soru kalıbı sezgileri hem
+        # küçük harfli soruları kaçırıyordu ("ahmet babalık hangi bölümde")
+        # hem de takip sorularını yanlışlıkla kişi sanıyordu ("peki bölüm
+        # başkanı kim"). İndekste kim varsa liste odur.
+        self.kadro_adlari = _kadro_adlari(self.retriever.chunks)
 
     def sor(self, soru: str, k: int = 4) -> Cevap:
         # 1. Yönlendirme: cevap sitede değil, başka bir sistemde.
-        yonlendirme = yonlendirme_bul(soru)
+        #
+        # Kişi adı geçen sorular yönlendirmeye HİÇ sokulmuyor. Sebep ölçüldü:
+        # yönlendirme anahtarları kelime başından eşleşiyor (Türkçe ek alması
+        # gerektiği için) ve "Kürşad Buğrahan Yapar kimdir" sorusu "kurs"
+        # anahtarına takılıp KTÜNSEM'e yönlendiriliyordu — üstelik yönlendirme
+        # aramadan önce çalıştığı için kişi hiç aranmıyordu.
+        kisi_adi_var = kadroda_ad_var_mi(soru, self.kadro_adlari)
+        yonlendirme = None if kisi_adi_var else yonlendirme_bul(soru)
         if yonlendirme:
             cevap = Cevap(metin=yonlendirme, yonlendirme=True, kullanilan_soru=soru)
             self.gecmis.append((soru, cevap.metin))
             return cevap
 
         # 2. Takip sorusuysa geçmişle tamamla (LLM'siz, deterministik).
-        arama_sorusu = yeniden_yaz(soru, self.gecmis, self.birimler)
+        #
+        # Ad soyad geçen soru takip sorusu DEĞİLDİR; kendi kendine yeter.
+        # Ölçülen vaka: "aybüke babadağ kimdir" (Bilgisayar Müh.) sorulduktan
+        # sonra "kürşad buğrahan yapar kimdir" sorulunca yeniden yazma başına
+        # "Bilgisayar Mühendisliği" ekliyordu; arama bozuluyor ve model başka
+        # bir kişinin adını veriyordu (Kürşad Buğrahan YAPAR aslında Yazılım
+        # Mühendisliği'nde).
+        arama_sorusu = (soru if kisi_adi_var
+                        else yeniden_yaz(soru, self.gecmis, self.birimler))
 
         # 3. Arama
-        sonuclar = self.retriever.search(arama_sorusu, k=k)
+        # Kimlik sorularında daha geniş aday listesi isteniyor: cevap kadro
+        # satırından OKUNUYOR, modele gitmiyor. Yani fazladan aday bağlamı
+        # şişirmiyor, sadece doğru satırın listeye girme şansını artırıyor.
+        # Ölçüm: k=4'te 65 kişiden 2-3'ünün kadro satırı ilk 4'e giremiyordu.
+        sonuclar = self.retriever.search(
+            arama_sorusu,
+            k=KIMLIK_ADAY_SAYISI if (kisi_adi_var or _kimlik_sorusu_mu(arama_sorusu)) else k)
 
-        # 4. Kapsam kapısı — LLM buradan sonra çağrılır.
+        # 4. Yapısal çıkarım kapsam kapısından ÖNCE denenir.
+        #
+        # Kadro satırında birebir eşleşen bir ad bulunduysa soru tanım gereği
+        # kapsam içindedir — skorların ne dediğinin önemi yok. Ölçülen vaka:
+        # "İsmail Koç kimdir" BM25 7.08 / kosinüs 0.811 alıyor (ikisi de eşiğin
+        # altında, çünkü "ismail" ve "koç" korpusta yaygın kelimeler) ve kapı
+        # reddediyordu — oysa Doç. Dr. İsmail KOÇ kadroda duruyor.
+        dogrudan = dogrudan_cevap(arama_sorusu, sonuclar, kimlik=kisi_adi_var)
+        if dogrudan:
+            metin, kaynak = dogrudan
+            cevap = Cevap(metin=metin, kaynaklar=[kaynak], dogrudan=True,
+                          kullanilan_soru=arama_sorusu)
+            self.gecmis.append((soru, cevap.metin))
+            return cevap
+
+        # 5. Kapsam kapısı — LLM buradan sonra çağrılır.
         if self.retriever.kapsam_disi_mi(sonuclar):
             # Soru bir KİŞİ hakkındaysa mesaj değişiyor: "sadece KTÜN hakkında
             # yardımcı olabilirim" demek yanlış bilgi veriyor, çünkü soru
@@ -128,16 +212,12 @@ class Chatbot:
             self.gecmis.append((soru, cevap.metin))
             return cevap
 
-        # 5. Yapisal cikarim — cevap metinde bir ALAN olarak duruyorsa modeli atla.
-        dogrudan = dogrudan_cevap(arama_sorusu, sonuclar)
-        if dogrudan:
-            metin, kaynak = dogrudan
-            cevap = Cevap(metin=metin, kaynaklar=[kaynak], dogrudan=True,
-                          kullanilan_soru=arama_sorusu)
-            self.gecmis.append((soru, cevap.metin))
-            return cevap
-
         # 6. LLM — kurallar system mesajinda, baglam+soru user mesajinda.
+        #
+        # Kimlik sorusunda aday listesi genişletilmişti (KIMLIK_ADAY_SAYISI);
+        # yapısal çıkarım tutmadıysa o uzun liste modele GİTMEMELİ. Bağlamı
+        # şişirmek modelin ders adı uydurmasına yol açıyordu (tuzak #5).
+        sonuclar = sonuclar[:k]
         try:
             metin = self.backend.generate(
                 prompt_kur(arama_sorusu, sonuclar), sistem=SISTEM_PROMPTU

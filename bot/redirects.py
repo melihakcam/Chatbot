@@ -9,6 +9,7 @@ NEDEN VAR:
     Bu yollar crawl edilmiyor (login arkasında), sadece yönlendiriliyor.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -50,11 +51,26 @@ YONLENDIRMELER: list[tuple[tuple[str, ...], str]] = [
 
 
 def yonlendirme_bul(soru: str) -> str | None:
-    """Soru bir yönlendirme konusuysa hazır cevabı döndürür, değilse None."""
+    """Soru bir yönlendirme konusuysa hazır cevabı döndürür, değilse None.
+
+    KELİME SINIRI ŞART: eşleşme alt dize üzerinden yapılınca özel adlar
+    yönlendirmeye takılıyordu. Ölçülen vaka: "Kürşad Buğrahan Yapar kimdir"
+    -> normalize edilmiş hali "kursad ..." ve içinde "kurs" geçtiği için
+    soru KTÜNSEM'e yönlendiriliyordu. Yönlendirme aramadan ÖNCE çalıştığı
+    için de kişi hiç aranmıyordu.
+    """
     soru_norm = normalize_tr(soru)
     for anahtarlar, cevap in YONLENDIRMELER:
-        if any(normalize_tr(a) in soru_norm for a in anahtarlar):
-            return cevap
+        for anahtar in anahtarlar:
+            # Kelime BAŞI şart, sonu değil: Türkçe sondan eklemeli, "kurslar"
+            # ve "notlarımı" da eşleşmeli. Sona da \b konunca bunlar kırılıyor.
+            # Özel ad çakışması ("Kürşad" içinde "kurs") burada değil,
+            # çağıran tarafta çözülüyor — bkz. bot/answer.py, kimlik sorusu
+            # yönlendirmeye hiç sokulmuyor.
+            kalip = r"\b" + r"\s+".join(re.escape(k)
+                                        for k in normalize_tr(anahtar).split())
+            if re.search(kalip, soru_norm):
+                return cevap
     return None
 
 
