@@ -256,19 +256,47 @@ testler zaten liste sayfasına eşleşerek geçiyordu.
 
 **Cevap** (`eval/answer_test.py`):
 
-| Ölçüt | Sonuç |
-|---|---|
-| Cevap doğruluğu | **8/8 (%100)** |
-| Kapsam dışı reddi | 2/2 |
-| Yönlendirme | 1/1 |
-| Sohbet hafızası | çalışıyor |
-| Süre | ort. 57.5 sn/soru (CPU, gemma2:2b) |
+| Ölçüt | 67 kayıt (tek bölüm) | 486 kayıt (güncel) |
+|---|---|---|
+| Cevap doğruluğu | 8/8 (%100) | **5/8 (%62)** |
+| Kapsam dışı reddi | 2/2 | **1/2** |
+| Yönlendirme | 1/1 | 1/1 |
+| Sohbet hafızası | çalışıyor | **tutmadı** |
+| Süre | ort. 57.5 sn/soru | ort. 58.3 sn/soru (CPU, gemma2:2b) |
+
+### 🔴 Soru kümesi yeni kapsama göre yazılmalı
+
+Düşüşün büyük kısmı sistemin gerilemesi değil, **soruların artık belirsiz
+olması.** Küme tek bölüm varken yazıldı; kapsam üç bölüme çıkınca aynı sorular
+tek doğru cevabı olmayan sorulara dönüştü:
+
+| Soru | Beklenen | Ne oldu |
+|---|---|---|
+| "Bölüm başkanı kim" | `Hakan` | *Hangi* bölümün? Üç bölümün üç başkanı var |
+| "Bölümün amacı nedir" | `yapay zeka` | Arama Bilgisayar Mühendisliği'ne düştü — o da geçerli bir cevap |
+| "Araştırma görevlileri kimler" | `Arş` | Model Dr. Öğr. Üyesi listeledi; kadro sayfası üç bölüme yayıldı |
+
+Yani üç hatanın en az ikisi **testin kusuru**. Sorular birim adıyla nitelenmeli
+("Yazılım Mühendisliği bölüm başkanı kim"), beklenen ifadeler yeni veriye göre
+güncellenmeli. Gerçek gerilemenin boyutu ancak ondan sonra ölçülebilir.
+
+Testten bağımsız iki gerçek sorun var:
+- **Kapsam dışı sızıntı** ("makarna tarifi ver" modele gitti) — yukarıdaki
+  kapsam kapısı bulgusunun cevap tarafındaki karşılığı.
+- **Sohbet hafızası tutmadı** — takip sorusu ("peki bölüm başkanı kim") doğru
+  yeniden yazıldı ama model bağlamdan ismi çıkaramadı, "**[3]** bölümdeki Bölüm
+  Başkanının göreviyle belirtilmiştir" dedi. Bağlama üç bölümün görev tanımı
+  PDF'i birden girince 2B model hangisinin sorulduğunu ayırt edemiyor.
 
 **Model seçimi:** `gemma2:2b` varsayılan. `qwen2.5:1.5b-instruct` beş kat hızlı
 ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1. parçasında apaçık
 dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
 
 ### Colab T4'te model karşılaştırması
+
+> ⚠️ Bu bölüm **67 kayıtlık (tek bölüm) veriyle** ölçüldü; 486 kayıtla
+> tekrarlanmadı. Notebook güncel örnek veriyle yeniden üretildi, yani ölçüm
+> tekrar çalıştırılabilir durumda — ama aşağıdaki rakamlar eski kapsamındır.
 
 Lokalde NVIDIA GPU yok, 2B üstü model denenemiyordu. Tavanı görmek için aynı 8
 soru Colab'ın T4'ünde 4-bit nicelemeyle ölçüldü
@@ -284,10 +312,14 @@ Arama zinciri ve promptlar birebir aynı; değişen tek şey `bot/llm.py` yerine
 **Ne çıkarıyoruz:** asıl fark doğrulukta değil, maliyette. 7B, 1.5B'nin dört
 katı parametreyle soru başına yalnızca 2.6 saniye daha alıyor — GPU'da darboğaz
 üretim değil, model yükleme ve bellek. Doğruluk tarafında 7B'nin 8/8'i tek
-başına bir üstünlük değil: lokal `gemma2:2b` de aynı 8 soruda 8/8 yapıyor.
-Yani bu görevde 8 soruluk küme **2B ile doymuş** durumda; tavanı ölçmek için
-daha zor bir soru kümesi gerekiyor. 7B'nin farkı hızda ve muhtemelen kümenin
-ölçmediği zor durumlarda.
+başına bir üstünlük değil: lokal `gemma2:2b` de aynı veriyle aynı 8 soruda 8/8
+yapıyordu. Yani o ölçekte 8 soruluk küme **2B ile doymuştu**.
+
+Bu, 486 kayıtla birlikte değişmiş olabilir: aynı sorularda 2B artık 5/8 yapıyor
+ve hatalarının bir kısmı "bağlamda üç bölümün belgesi var, hangisi sorulmuş"
+ayrımını yapamamaktan geliyor — tam da büyük modelin fark yaratmasını
+bekleyeceğin yer. Karşılaştırmayı güncel veriyle tekrarlamak artık boş bir iş
+değil; eski kapsamında olduğu gibi "ölçüm zaten doymuş" denemez.
 
 **Bu tablonun söylemedikleri:**
 - `google/gemma-2-*` ölçülemedi (HF'de kapalı repo, lisans onayı + token
@@ -308,8 +340,11 @@ yani dört kat daha büyük modelle dört kattan fazla hız. Kod tarafında hiç
 değişiklik gerekmiyor; değişen tek şey `bot/llm.py`'nin arkasındaki backend.
 
 ### Bilinen kusurlar
-- **Kapsam kapısı 486 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık. Ölçekle
-  gelen tek ciddi gerileme bu.
+- **Kapsam kapısı 486 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık.
+- **Soru kümesi yeni kapsama göre güncellenmedi** — sorular birim adı taşımıyor,
+  bu yüzden cevap doğruluğu ölçümü olduğundan kötü görünüyor.
+- **Takip sorusunda bağlam ayrımı** — üç bölümün belgesi bağlama birden girince
+  2B model hangisinin sorulduğunu ayırt edemiyor (sohbet hafızası testi tutmadı).
 - "Güz yarıyılı ne zaman başlıyor" sorusunda model bazen Bahar tarihini veriyor.
   Akademik takvim PDF'inde GÜZ ve BAHAR blokları ayrı parçalarda ve etiketli, ama
   embedding "güz" sorgusunda BAHAR parçasını üste çıkarabiliyor.
