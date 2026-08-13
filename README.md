@@ -1,10 +1,27 @@
 # KTÜN Destek Chatbotu
 
-Konya Teknik Üniversitesi için, **sadece** üniversiteyle ilgili sorulara cevap veren destek
-chatbotu. Bilgi kaynağı üniversitenin kendi sitesi (ktun.edu.tr); bilgi modele
-ezberletilmez, soru anında ilgili sayfalar bulunup modele okutulur (**RAG**).
+Konya Teknik Üniversitesi **Yapay Zeka ve Makine Öğrenmesi Mühendisliği bölümü** için,
+sadece bölümle ilgili sorulara cevap veren destek chatbotu. Bilgi kaynağı üniversitenin
+kendi sitesi (ktun.edu.tr); bilgi modele ezberletilmez, soru anında ilgili sayfalar bulunup
+modele okutulur (**RAG**).
 
 Hedef soru tipleri: **kişi/iletişim** · **tarih/takvim** · **ders/program** · **duyuru/haber**
+
+## Kapsam: tek bölüm
+
+Bot tüm üniversiteye değil, tek bölüme cevap veriyor. Sebep pratik: 31 bölümün tamamı
+binlerce sayfa demek, ve arama havuzu büyüdükçe "hangi bölümün sınav takvimi" ayrımı
+zorlaşıp yanlış bölümün cevabı dönüyor. Tek bölümde 59 kayıt, hepsi aynı birime ait —
+`unit` alanına bakarak eleme yapmak gerekmiyor.
+
+Çekilen 59 kaydın dağılımı: **41 PDF** (öğretim planı, 4 dönem ders programı, 10 sınav
+takvimi, staj belgeleri, kalite/süreç dosyaları) · 11 sayfa · 4 tablo (AKTS ders listeleri) ·
+2 duyuru · 1 personel listesi.
+
+> Bölümün "Öğretim Planı", "Ders Programı", "Sınav Programları" sayfalarının **metni
+> neredeyse boştur** — sadece PDF linkleri taşırlar. Asıl içerik `/Dosyalar/**.pdf`
+> altında, yani `/tr/Birim/` dışında. Bu yüzden `--sadece-birim` PDF'leri elemez
+> (`crawler/run.py:ekle`); elerse bölümün ders ve sınav verisinin tamamı kaybolur.
 
 ---
 
@@ -43,10 +60,12 @@ ollama pull gemma2:2b
 ## Komutlar
 
 ```bash
-python scripts/make_sample.py                                 # örnek veri üret (M0, tek seferlik)
-python scripts/validate_jsonl.py data/sample/pages.sample.jsonl   # şema doğrula
+python scripts/validate_jsonl.py data/raw/pages.jsonl         # şema doğrula
 python common/normalize.py                                    # Türkçe normalizasyon testleri
 ```
+
+Veri güncellemek = crawler'ı tekrar çalıştırmak; `--sifirdan` verilmezse mevcut
+kayıtlarla birleştirir.
 
 ---
 
@@ -102,5 +121,8 @@ Selenium **gerekmiyor**. `robots.txt` ve `sitemap.xml` **yok** → ana sayfadan 
 
 ## Kapsam dışı
 
-Login arkasındaki kişisel veri (not, transkript, ders kaydı) — OBS'ye yönlendirilir ·
-İngilizce sayfalar · alt alan adları (`obs`, `lms`, `kutuphane`…) — yalnızca yönlendirme.
+**Diğer 30 bölüm ve genel üniversite sayfaları** — bot tek bölüme cevap veriyor (yukarı bak) ·
+login arkasındaki kişisel veri (not, transkript, ders kaydı) — OBS'ye yönlendirilir ·
+İngilizce sayfalar · alt alan adları (`obs`, `lms`, `kutuphane`…) — yalnızca yönlendirme ·
+`.docx`/`.xlsx` ekler (staj formları, 2024-2025 güz sınav takvimleri) — metne çevrilmiyor,
+`scope.DISLANAN_UZANTILAR` içinde.
