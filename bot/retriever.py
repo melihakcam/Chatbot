@@ -213,7 +213,15 @@ class Retriever:
         # parçalara (iki katkı) yenilir. Ölçülen somut vaka: "bölümde hangi
         # hocalar var" sorusunda kadro listesi BM25'te 1., kosinüste 34. —
         # sonuçlara hiç giremiyordu, yerine görev tanımı PDF'leri çıkıyordu.
-        garantili = [int(bm25_sira[0]), int(dense_sira[0])] if len(self.chunks) else []
+        # Cezalı parça garantiden YARARLANMAZ. Aksi halde iki kural çakışıyordu:
+        # görev tanımı belgesi ceza yiyip sıralamada geriye düşüyor ama BM25'in
+        # birincisi olduğu için garantili slotu kapıp yine 1. sırada çıkıyordu
+        # ("birinci dönem dersleri neler" sorusunda tam olarak bu oluyordu).
+        def garanti_hakki_var(idx: int) -> bool:
+            return gorev_sorusu or not self.chunks[idx].get("gorev_tanimi")
+
+        garantili = [int(i) for i in (bm25_sira[0], dense_sira[0])
+                     if len(self.chunks) and garanti_hakki_var(int(i))]
 
         siralanmis = sorted(rrf.items(), key=lambda x: -x[1])
         sira_indeksleri = [i for i in garantili if i in rrf]
