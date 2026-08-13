@@ -130,14 +130,56 @@ modelinde kapsam içi skorlar 0.817–0.923, kapsam dışı 0.805–0.842 — ar
 
 ## Ölçüm sonuçları
 
-Aşağıdaki sayılar **tek bölüm verisiyle** (67 kayıt) ölçüldü.
+Tek bölüm verisiyle (67 kayıt → 104 parça) ölçüldü.
 
-| Model | Cevap doğruluğu | Hız |
+**Arama** (`eval/retrieval_test.py`, model çalıştırılmadan):
+
+| Ölçüt | Sonuç | Hedef |
 |---|---|---|
-| **gemma2:2b** (varsayılan) | ölçüm `eval/answer_test.py` | ~20 sn/soru |
-| qwen2.5:1.5b-instruct | belirgin şekilde düşük | ~4 sn/soru |
+| Doğru kaynak ilk 4'te | **17/18 (%94)** | %80 |
+| kişi / tarih / ders / duyuru | %100 / %100 / %83 / %100 | %70 |
+| Kapsam dışı sızıntı | **0/6** | 0 |
+| Kapsam içi yanlış ret | **0/18** | 0 |
 
-qwen beş kat hızlı ama bağlamdaki cevabı göremiyor. Doğruluk hızın önünde tutuldu.
+**Cevap** (`eval/answer_test.py`):
+
+| Ölçüt | Sonuç |
+|---|---|
+| Cevap doğruluğu | **7/8 (%88)** |
+| Kapsam dışı reddi | 2/2 |
+| Yönlendirme | 1/1 |
+| Sohbet hafızası | çalışıyor |
+| Süre | 12–62 sn/soru (CPU, gemma2:2b) |
+
+**Model seçimi:** `gemma2:2b` varsayılan. `qwen2.5:1.5b-instruct` beş kat hızlı
+ama bağlamdaki cevabı göremiyor — telefon numarası bağlamın 1. parçasında apaçık
+dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
+
+### Bilinen kusurlar
+- "Birinci dönem dersleri neler" sorusunda görev tanımı PDF'i 1. sırada; doğru
+  belge (öğretim planı) 3. sırada, cevap bağlama giriyor ama sıralama ideal değil.
+- Bu bölümün iletişim sayfasında **telefon ve e-posta yok**, sadece adres var.
+  `bot/extract.py`'nin telefon/e-posta çıkarımı bu veride devreye girmiyor —
+  kod sorunu değil, sitede o bilgi yok (telefon rehberi uçları da boş dönüyor).
+- CPU'da soru başına yarım dakikayı bulabiliyor. GPU'lu bir ortamda saniyeler.
+
+---
+
+## Ölçümle bulunan tuzaklar
+
+Hiçbiri hata mesajı vermiyor — sistem çalışıyor görünüp yanlış cevap veriyor.
+
+| # | Belirti | Kök sebep | Çözüm |
+|---|---|---|---|
+| 1 | Türkçe arama tutmuyor | `"İ".lower()` fazladan U+0307 üretiyor | `common/normalize.py` |
+| 2 | Sayfa bulunamıyor | `brm` Base64'ünde `+` boşluğa dönüyor | URL yeniden encode edilmiyor |
+| 3 | Model bağlamdaki cevabı görmüyor | Kaçış cümlesi promptta birebir yazılıydı, model kopyalıyordu | Etiket (`BILGI_YOK`) |
+| 4 | Talimat takibi bozuk | `/api/generate` sohbet şablonunu uygulamıyor | `/api/chat` |
+| 5 | Model ders adı uyduruyor | 20 personel parçası bağlamı dolduruyor | Kaynak başına kota |
+| 6 | Kadro listesi hiç görünmüyor | RRF zayıflığı: BM25'te 1., kosinüste 34. | Her yöntemin birincisine slot |
+| 7 | Müfredat/çizelge karışıyor | Ayırt edici bilgi başlıkta, gövdede değil | Başlık eşleşme bonusu |
+| 8 | Kişi soruları form belgelerine düşüyor | Görev tanımı PDF'leri aynı kelimeleri içeriyor | Belge sınıfı + ceza |
+| 9 | "peki" ile başlayan soru reddediliyor | Bağlaç BM25 ağırlığını sulandırıyor | Takip bağlaçları ayıklanıyor |
 
 ---
 
