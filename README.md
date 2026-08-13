@@ -14,7 +14,7 @@ duyuru, haber ve akademik takvim. 31 bölümün tamamı binlerce sayfa demek ve 
 büyüdükçe "hangi bölümün sınav takvimi" ayrımı zorlaşıyor; üç bölüm bu ayrımı hâlâ anlamlı
 tutacak kadar çeşitli, `unit` alanı da onu ayırt etmeye yetiyor.
 
-Çekilen **486 kayıt**: 257 PDF (öğretim planları, ders/sınav programları, staj ve kalite
+Çekilen **483 kayıt**: 257 PDF (öğretim planları, ders/sınav programları, staj ve kalite
 belgeleri) · 73 duyuru · 69 personel · 48 sayfa · 24 tablo (AKTS ders listeleri) · 15 haber.
 
 | Birim | Kayıt |
@@ -49,9 +49,9 @@ flowchart TD
     subgraph VERI["VERİ HATTI — elle tetiklenir"]
         SITE[ktun.edu.tr]
         CRAWL["crawler/run.py<br/>BFS + PDF + AJAX"]
-        RAW[("data/raw/pages.jsonl<br/>486 kayıt")]
+        RAW[("data/raw/pages.jsonl<br/>483 kayıt")]
         CHUNK["index/chunk.py<br/>tipe göre parçalama"]
-        IDX[("data/index/<br/>348 parça · embedding · BM25")]
+        IDX[("data/index/<br/>820 parça · embedding · BM25")]
         SITE --> CRAWL --> RAW --> CHUNK --> IDX
     end
 
@@ -60,7 +60,7 @@ flowchart TD
         YON{"OBS / LMS /<br/>kütüphane konusu mu?"}
         REW["bot/rewrite.py<br/>takip sorusunu tamamla"]
         ARA["bot/retriever.py<br/>BM25 + embedding, RRF"]
-        KAPI{"kapsam içi mi?<br/>BM25 ≥ 3.0 VE kos ≥ 0.82<br/>(486 kayıtta sızdırıyor)"}
+        KAPI{"kapsam içi mi?<br/>BM25 ≥ 3.0 VE kos ≥ 0.82<br/>(483 kayıtta sızdırıyor)"}
         EXT{"cevap bir ALAN mı?<br/>telefon / e-posta / ders kodu"}
         LLM["bot/llm.py<br/>gemma2:2b"]
         CEVAP([Cevap + kaynak linki])
@@ -210,17 +210,17 @@ seviye.
 
 ## Ölçüm sonuçları
 
-Güncel veriyle (**486 kayıt → 348 parça**) ölçüldü. Karşılaştırma sütunu, kapsam
+Güncel veriyle (**483 kayıt → 820 parça**) ölçüldü. Karşılaştırma sütunu, kapsam
 tek bölümken (67 kayıt → 104 parça) alınan ölçüm — ikisi de aynı soru kümesiyle
 (`eval/retrieval_test.py`, 18 kapsam içi / 6 kapsam dışı).
 
 **Arama** (model çalıştırılmadan):
 
-| Ölçüt | 67 kayıt (tek bölüm) | 486 kayıt (güncel) | Hedef |
+| Ölçüt | 67 kayıt (tek bölüm) | 483 kayıt (güncel) | Hedef |
 |---|---|---|---|
 | Doğru kaynak ilk 4'te | 17/18 (%94) | **16/18 (%89)** | %80 |
 | kişi / tarih / ders / duyuru | %100 / %100 / %83 / %100 | %100 / %100 / %83 / %75 | %70 |
-| Kapsam dışı sızıntı | 0/6 | **2/6** | 0 |
+| Kapsam dışı sızıntı | 0/6 | **3/6** | 0 |
 | Kapsam içi yanlış ret | 0/18 | **0/18** | 0 |
 
 Arama isabeti hedefin üstünde. Kapsam 4.7 katına çıkarken ilk ölçüm 14/18'e
@@ -247,7 +247,7 @@ Kapı iki sinyale birden bakıyor (`bot/retriever.py`): `BM25_ESIGI = 3.0` **ve*
 `KOSINUS_ESIGI = 0.82`, ayrıca tek başına yeterli sayılan `KOSINUS_TEK_BASINA = 0.85`.
 Bu eşikler 67 kayıtlık veriyle ölçülmüştü ve o ölçekte ayırım tamdı (0/6 sızıntı).
 
-486 kayıtta iki dağılım da **çakışıyor**:
+483 kayıtta iki dağılım da **çakışıyor**:
 
 | | BM25 | kosinüs |
 |---|---|---|
@@ -296,13 +296,13 @@ ya da alan sözlüğü) dürüstçe tasarlanıp ölçülebilir.
 
 **Cevap** (`eval/answer_test.py`):
 
-| Ölçüt | 67 kayıt (tek bölüm) | 486 kayıt (güncel) |
+| Ölçüt | 67 kayıt (tek bölüm) | 483 kayıt (güncel) |
 |---|---|---|
-| Cevap doğruluğu | 8/8 (%100) | **7/8 (%88)** |
+| Cevap doğruluğu | 8/8 (%100) | **8/8 (%100)** |
 | Kapsam dışı reddi | 2/2 | **1/2** |
 | Yönlendirme | 1/1 | 1/1 |
 | Sohbet hafızası | çalışıyor | çalışıyor |
-| Süre | ort. 57.5 sn/soru | ort. 49.3 sn/soru (CPU, gemma2:2b) |
+| Süre | ort. 57.5 sn/soru | ort. 40.4 sn/soru (CPU, gemma2:2b) |
 
 **Soru kümesi yeni kapsama göre yeniden yazıldı.** Küme tek bölüm varken
 yazılmıştı; kapsam üç bölüme çıkınca sorular tek doğru cevabı olmayan sorulara
@@ -324,7 +324,7 @@ dururken "bilgi yok" diyordu. Doğruluk hızın önünde tutuldu.
 
 ### Colab T4'te model karşılaştırması
 
-> ⚠️ Bu bölüm **67 kayıtlık (tek bölüm) veriyle** ölçüldü; 486 kayıtla
+> ⚠️ Bu bölüm **67 kayıtlık (tek bölüm) veriyle** ölçüldü; 483 kayıtla
 > tekrarlanmadı. Notebook güncel örnek veriyle yeniden üretildi, yani ölçüm
 > tekrar çalıştırılabilir durumda — ama aşağıdaki rakamlar eski kapsamındır.
 
@@ -345,11 +345,9 @@ katı parametreyle soru başına yalnızca 2.6 saniye daha alıyor — GPU'da da
 başına bir üstünlük değil: lokal `gemma2:2b` de aynı veriyle aynı 8 soruda 8/8
 yapıyordu. Yani o ölçekte 8 soruluk küme **2B ile doymuştu**.
 
-Bu, 486 kayıtla birlikte değişmiş olabilir: aynı sorularda 2B artık 5/8 yapıyor
-ve hatalarının bir kısmı "bağlamda üç bölümün belgesi var, hangisi sorulmuş"
-ayrımını yapamamaktan geliyor — tam da büyük modelin fark yaratmasını
-bekleyeceğin yer. Karşılaştırmayı güncel veriyle tekrarlamak artık boş bir iş
-değil; eski kapsamında olduğu gibi "ölçüm zaten doymuş" denemez.
+483 kayıtta da 2B yine 8/8 yapıyor — küme hâlâ doymuş durumda. Yani bu
+karşılaştırmanın söylediği şey değişmedi: 7B'nin ölçülebilen üstünlüğü hızda.
+Ayrımı görmek için daha zor bir soru kümesi gerekiyor.
 
 **Bu tablonun söylemedikleri:**
 - `google/gemma-2-*` ölçülemedi (HF'de kapalı repo, lisans onayı + token
@@ -370,7 +368,7 @@ yani dört kat daha büyük modelle dört kattan fazla hız. Kod tarafında hiç
 değişiklik gerekmiyor; değişen tek şey `bot/llm.py`'nin arkasındaki backend.
 
 ### Bilinen kusurlar
-- **Kapsam kapısı 486 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık. Ölçekle
+- **Kapsam kapısı 483 kayıtta sızdırıyor** — yukarıdaki kırmızı başlık. Ölçekle
   gelen ve hâlâ açık olan tek ciddi gerileme.
 - **Birimsiz soru belirsiz** — "bölüm başkanı kim" üç bölümden birini seçiyor.
   Sistem bunu kullanıcıya sormuyor, sessizce birini alıyor.
