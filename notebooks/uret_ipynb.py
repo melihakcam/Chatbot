@@ -30,10 +30,21 @@ Lokalde NVIDIA GPU yok; `gemma2:2b` CPU'da soru başına 12-62 saniye alıyor ve
 
 **Amaç:** lokale hangi modelin kurulacağına karar vermek ve rapora tablo çıkarmak.
 
-**Önce: Runtime → Change runtime type → T4 GPU**
+## Çalıştırmadan önce iki ayar
 
-Hücreleri sırayla çalıştır. Son hücre Markdown tablo basar, doğrudan README'ye
-yapıştırılabilir.
+1. **Runtime → Change runtime type → T4 GPU**
+2. Sol paneldeki 🔑 **Secrets** → şu ikisini ekle, "Notebook access" aç:
+
+| Secret | Nereden | Gerekli mi |
+|---|---|---|
+| `GH_TOKEN` | GitHub → Settings → Developer settings → Personal access tokens → Fine-grained, sadece `Chatbot` reposu + `Contents: Read` | Evet — repo private |
+| `HF_TOKEN` | huggingface.co → Settings → Access Tokens (ayrıca `google/gemma-2-2b-it` ve `-9b-it` sayfalarında lisansı kabul et) | Hayır — yoksa gemma modelleri atlanır, Qwen'ler ölçülür |
+
+`GH_TOKEN` secret'ı yoksa hücre gizli bir giriş kutusu açar; token notebook'a
+yazılmaz, dolayısıyla repoya da sızmaz.
+
+Sonra hücreleri sırayla çalıştır. Son hücre Markdown tablo basar, doğrudan
+README'ye yapıştırılabilir.
 """
 
 
@@ -56,13 +67,14 @@ def main() -> int:
         markdown_hucre(BASLIK),
         markdown_hucre(
             "## 1. Kurulum\n\n"
-            "Bu hücreyi **doğrudan çalıştır**. Proje bulunamazsa bir *Dosya Seç* "
-            "penceresi açılacak — `ktunChatbot` klasörünün zip'ini seç.\n\n"
-            "> Zip gerekiyor çünkü Colab'ın sol paneli **klasör değil dosya** kabul ediyor; "
-            "klasör sürüklendiğinde çoğu zaman sessizce hiçbir şey olmuyor ve `/content` "
-            "boş kalıyor.\n\n"
-            "Zip'lerken `data/models` klasörünü **dahil etme** — 941 MB embedding modeli "
-            "var, Colab kendisi indiriyor. Gereken: `bot/ index/ common/ eval/ data/sample/`"
+            "Hiçbir şey yüklemen gerekmiyor — bu hücre repoyu kendisi klonluyor "
+            "(`--depth 1`, 1 MB'ın altında) ve bağımlılıkları kuruyor.\n\n"
+            "> Klasörü zip'leyip yüklemek işe yaramıyordu: klasörün tamamı ~760 MB "
+            "(`data/models` 470 MB embedding önbelleği + `.git` 290 MB), Colab'ın "
+            "ihtiyacı olan kısım ise 0.5 MB. Ayrıca Colab'ın sol paneli klasör değil "
+            "**dosya** kabul ediyor. Klonlama ikisini birden çözüyor ve kod "
+            "değiştiğinde yeniden yüklemek gerekmiyor.\n\n"
+            "Hücre ikinci kez çalıştırılırsa klonlamak yerine `git pull` yapar."
         ),
         kod_hucre(KURULUM),
         markdown_hucre("## 2. İndeks\n"

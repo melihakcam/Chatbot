@@ -18,82 +18,72 @@ KULLANIM (Colab):
 
 # ---------------------------------------------------------------- HÜCRE 1: kurulum
 #
-# DİKKAT: Repo PRIVATE. Kimlik doğrulaması olmadan git clone başarısız olur,
-# /content/ktun oluşmaz, sonraki hücrelerde "No module named 'bot'" hatası alınır.
-# Bu yüzden klonlama denenip SONUCU KONTROL EDİLİYOR ve başarısızsa ne yapılacağı
-# yazdırılıyor — sessizce devam edip kafa karıştıran hataya yol açmıyor.
-# Kod Colab'a ELLE yükleniyor (repo private, git clone kimlik doğrulaması istiyor).
+# NEDEN ZIP DEĞİL KLONLAMA:
+#     Önce "klasörü zip'leyip Colab'a yükle" deniyordu. Çalışmadı: klasörün
+#     tamamı ~760 MB (data/models 470 MB HF önbelleği + .git 290 MB), işe
+#     yarayan kısım 0.5 MB. Yükleme ya kopuyor ya da içeri eski __pycache__
+#     giriyor. `git clone --depth 1` ise 1 MB'ın altında ve her çalıştırmada
+#     güncel — kod değişince yeniden zip'lemek gerekmiyor.
 #
-# Bu hücre "ne yüklediğini" varsaymıyor: zip de olabilir, klasör de, dosyaların
-# doğrudan /content'e atılmış hâli de. Proje kökünü `bot/` ve `index/` klasörlerini
-# arayarak kendisi buluyor. Böylece yükleme biçimi değişince hücreyi düzenlemek
-# gerekmiyor — ve yanlış dizinde çalışıp "No module named 'bot'" hatası vermiyor.
+# TOKEN NEREDE DURUYOR:
+#     Repo private. Token notebook'a YAZILMIYOR (repoya sızar); Colab'ın
+#     Secrets panelinden okunuyor. Secret yoksa gizli giriş kutusu açılıyor,
+#     yani hücre yine de çalışıyor — sadece her oturumda soruyor.
+#     google/gemma-* HF'de KAPALI repo; onun için ayrıca HF_TOKEN gerekiyor,
+#     yoksa 4. hücre o modelleri atlıyor (çökmüyor).
 KURULUM = r"""
 !pip -q install sentence-transformers rank-bm25 transformers accelerate bitsandbytes
 
-import os, sys, glob, zipfile
+import getpass
+import os
+import subprocess
+import sys
 
-# Colab'in sol paneli KLASOR degil DOSYA kabul ediyor. Klasor suruklendiginde
-# cogu zaman sessizce hicbir sey olmuyor — /content bos kaliyor. Bu yuzden
-# burada dosya secme penceresi aciliyor: guvenilir ve tek tiklik.
-ATLA = {"sample_data", "__pycache__", ".git", ".config", ".ipynb_checkpoints"}
-
-
-# bot/ index/ common/ klasorlerini BIRLIKTE iceren dizini bulur.
-def proje_kokunu_bul(basla="/content", derinlik=5):
-    for kok, klasorler, _ in os.walk(basla):
-        klasorler[:] = [d for d in klasorler if d not in ATLA]
-        if kok.count(os.sep) - basla.count(os.sep) > derinlik:
-            klasorler[:] = []
-            continue
-        if {"bot", "index", "common"} <= set(klasorler):
-            return kok
-    return None
+REPO = "github.com/melihakcam/Chatbot.git"
+KOK = "/content/ktun"
 
 
-def zipleri_ac():
-    acildi = False
-    for z_yol in glob.glob("/content/**/*.zip", recursive=True):
-        with zipfile.ZipFile(z_yol) as z:
-            z.extractall("/content/ktun")
-        print(f"Zip acildi: {os.path.basename(z_yol)}")
-        acildi = True
-    return acildi
+# Colab Secrets'tan okur; panel yoksa veya izin verilmemisse None doner.
+def gizli(ad):
+    try:
+        from google.colab import userdata
+        return userdata.get(ad)
+    except Exception:
+        return None
 
 
-KOK = proje_kokunu_bul()
+if os.path.isdir(os.path.join(KOK, "bot")):
+    subprocess.run(["git", "-C", KOK, "pull", "--quiet"], check=False)
+    print("Repo zaten vardi, guncellendi.")
+else:
+    gh = gizli("GH_TOKEN")
+    if not gh:
+        print("Colab Secrets'ta GH_TOKEN yok (sol paneldeki anahtar simgesi).")
+        gh = getpass.getpass("GitHub token: ").strip()
 
-if KOK is None and zipleri_ac():
-    KOK = proje_kokunu_bul()
-
-# Hala yoksa dosya secme penceresi ac (surukle-birak'a guvenme).
-if KOK is None:
-    print("Proje bulunamadi.\n")
-    print("Bilgisayarinda ktunChatbot klasorunu ZIP'le (sag tik -> Sikistir),")
-    print("asagidaki 'Dosya Sec' ile o zip'i yukle.\n")
-    from google.colab import files
-    yuklenen = files.upload()
-    for ad in yuklenen:
-        if ad.lower().endswith(".zip"):
-            with zipfile.ZipFile(ad) as z:
-                z.extractall("/content/ktun")
-            print(f"Acildi: {ad}")
-    KOK = proje_kokunu_bul()
-
-if KOK is None:
-    print("/content icinde su anda sunlar var:")
-    for ad in sorted(os.listdir("/content")):
-        print("   ", ad)
-    raise SystemExit("Proje klasoru bulunamadi. Zip'in icinde bot/ index/ common/ olmali.")
+    sonuc = subprocess.run(
+        ["git", "clone", "--depth", "1", f"https://{gh}@{REPO}", KOK],
+        capture_output=True, text=True,
+    )
+    if sonuc.returncode:
+        # Token hata metninde gecebiliyor; loglara dusmesin diye maskeleniyor.
+        raise SystemExit("Klonlama basarisiz:\n" + sonuc.stderr.replace(gh, "***"))
+    print("Repo klonlandi.")
 
 os.chdir(KOK)
-sys.path.insert(0, KOK)        # 'bot', 'index', 'common' import edilebilsin
+if KOK not in sys.path:
+    sys.path.insert(0, KOK)    # 'bot', 'index', 'common' import edilebilsin
 os.environ["KTUN_KOK"] = KOK   # sonraki hucreler bunu kullaniyor
 
-print("\nProje koku:", KOK)
-print("Klasorler:", sorted(d for d in os.listdir() if os.path.isdir(d) and not d.startswith(".")))
-ornek = os.path.join(KOK, "data", "sample", "pages.sample.jsonl")
-print("Ornek veri:", "VAR" if os.path.exists(ornek) else "YOK — indeks kurulamaz")
+# gemma-2 HF'de kapali: token yoksa 4. hucre o modelleri atlar.
+hf = gizli("HF_TOKEN")
+if hf:
+    os.environ["HF_TOKEN"] = hf
+
+ornek = "data/sample/pages.sample.jsonl"
+print("Kok         :", KOK)
+print("Ornek veri  :", "VAR" if os.path.exists(ornek) else "YOK — indeks kurulamaz")
+print("HF_TOKEN    :", "var" if hf else "YOK — google/gemma-* atlanacak")
 """
 
 # ---------------------------------------------------------------- HÜCRE 2: indeks
@@ -176,6 +166,14 @@ ADAYLAR = [
     "Qwen/Qwen2.5-7B-Instruct",      # lokalde çalışmaz, tavanı görmek için
     "google/gemma-2-9b-it",          # en büyük aday
 ]
+
+# google/gemma-* HF'de kapali repo (lisans onayi + token ister). Token yoksa
+# indirme 4 dakika sonra 401 ile duserdi; bastan eleniyor ki neden belli olsun.
+if not os.environ.get("HF_TOKEN"):
+    atlanan = [m for m in ADAYLAR if m.startswith("google/")]
+    ADAYLAR = [m for m in ADAYLAR if m not in atlanan]
+    if atlanan:
+        print("HF_TOKEN yok, atlanan modeller:", ", ".join(atlanan))
 
 sonuclar = []
 for model_adi in ADAYLAR:
